@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { getWsUrl } from '@/lib/config';
 
 export interface WsMessage {
   type: string;       // 'heartbeat' | 'meter' | 'powerModule' | 'fanRpm' | 'temperature' | 'plc' | 'alert' | 'scriptHb'
@@ -10,8 +11,6 @@ export interface WsMessage {
 }
 
 type MessageHandler = (msg: WsMessage) => void;
-
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || '';
 
 export function useWebSocket(onMessage?: MessageHandler) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -25,14 +24,15 @@ export function useWebSocket(onMessage?: MessageHandler) {
   }, [onMessage]);
 
   useEffect(() => {
-    if (!WS_URL) return;
+    const wsUrl = getWsUrl();
+    if (!wsUrl) return;
 
     let ws: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;
     let closed = false;
 
     function connect() {
-      ws = new WebSocket(WS_URL);
+      ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
