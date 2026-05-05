@@ -4,9 +4,9 @@
  */
 
 import { MongoClient, Db } from 'mongodb';
+import { MONGO_URI } from './env';
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://EDS:EV1@45.91.135.9:27017/';
-const MONGO_DB  = process.env.MONGO_DB  || 'ev_monitor';
+const MONGO_DB = process.env.MONGO_DB || 'ev_monitor';
 
 let client: MongoClient | null = null;
 let db: Db | null = null;

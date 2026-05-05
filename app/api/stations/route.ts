@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
+import { MONGO_URI } from '@/lib/env';
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://EDS:EV1@45.91.135.9:27017/';
 const STATION_DB = 'Station';
 
 /**
