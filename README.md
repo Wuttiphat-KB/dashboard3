@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EV-Dashboard3
 
-## Getting Started
+EV Charger Station Monitoring Dashboard
+Next.js 16 (App Router) + TypeScript + Tailwind CSS + MQTT + MongoDB + WebSocket
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS v4
+- **Backend**: Node.js (tsx), MQTT, MongoDB, WebSocket (`ws`)
+- **Database**: MongoDB (multiple databases — see Architecture)
+- **MQTT broker**: subscribed by backend, broadcasted via WebSocket
+
+## Architecture
+
+```
+Stations (MQTT) → Backend (server/) → MongoDB
+                       ↓
+                   WebSocket (port 4100)
+                       ↓
+                   Frontend (Next.js, port 3000)
+                       ↑
+              REST API (/api/*) reads MongoDB
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### MongoDB databases
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Database     | Purpose                                        |
+|--------------|------------------------------------------------|
+| `Station`    | Station configs, alerts, device/script status |
+| `Heartbeat`  | OCPP heartbeat history (Node-RED)              |
+| `PowerModule`| Power module data (Node-RED)                   |
+| `meter`      | Meter readings (Node-RED)                      |
+| `Router`     | Router heartbeat (Node-RED)                    |
+| `StatePLC`   | Filtered PLC payloads (changed values only)    |
+| `PlcDatabase`| Legacy PLC data (Node-RED, old format)         |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Setup
 
-## Learn More
+```bash
+# Install dependencies
+npm install
 
-To learn more about Next.js, take a look at the following resources:
+# Copy env template and fill in values
+cp .env.example .env.local
+# Edit .env.local with your MongoDB / MQTT connection strings
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Running
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+# Terminal 1: Backend (MQTT subscriber + WebSocket server)
+npm run server
 
-## Deploy on Vercel
+# Terminal 2: Frontend (Next.js dev)
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Open `http://localhost:3000`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Production deploy
+
+```bash
+# Build frontend
+npm run build
+
+# Start production servers
+npm run server   # Backend
+npm run start    # Frontend (port 3000)
+```
+
+For long-running deploy use a process manager like `pm2`:
+
+```bash
+pm2 start "npm run server" --name ev-backend
+pm2 start "npm run start"  --name ev-frontend
+pm2 save
+pm2 startup
+```
+
+## Adding a station
+
+1. Open `/config` in the dashboard
+2. Click **+ Add Station**
+3. Fill in MQTT topics, MongoDB collection names, fan brand, expected PM per head
+4. Click **Add Station** — backend auto-picks up within 10s, no restart needed
+
+## Pages
+
+| Route | Description |
+|-------|-------------|
+| `/`                | Fleet Overview — all stations |
+| `/station/[id]`    | Station Detail — 7 tabs |
+| `/overview/[type]` | Per-type overview across all stations |
+| `/alerts`          | Alert center |
+| `/config`          | Station configuration |
+| `/settings`        | Thresholds + Telegram (disabled until v2) |
+
+## License
+
+Private / proprietary.

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ':*)",
+      "Bash(timeout 20 npx tsx server/index.ts)",
+      "Bash(node --eval ':*)",
+      "Bash(npx next:*)",
+      "Bash(node --eval ' *)",
+      "Bash(git check-ignore *)"
+    ]
+  }
+}
