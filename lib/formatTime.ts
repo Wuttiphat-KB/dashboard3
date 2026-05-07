@@ -6,10 +6,32 @@
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** Parse "2026-04-26T13:26:59.929284" or "2026-04-26T13:26:59Z" → component parts (no TZ shift) */
+/**
+ * Parse timestamp into displayable parts.
+ * - If string has timezone marker (`Z` or `±HH:MM`) → treat as UTC/explicit-tz
+ *   and convert to browser local time (gives +7 in Thailand).
+ * - Otherwise → already local timestamp, extract digits as-is (no shift).
+ */
 function parseRaw(iso: string): { y: number; mo: number; d: number; h: number; mi: number; s: number } | null {
   if (!iso) return null;
-  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
+  const s = String(iso);
+
+  // Has explicit timezone → use Date to convert to browser local
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(s)) {
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return null;
+    return {
+      y:  d.getFullYear(),
+      mo: d.getMonth() + 1,
+      d:  d.getDate(),
+      h:  d.getHours(),
+      mi: d.getMinutes(),
+      s:  d.getSeconds(),
+    };
+  }
+
+  // No timezone info → already local, parse digits directly
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
   if (!m) return null;
   return {
     y:  Number(m[1]),

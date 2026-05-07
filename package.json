@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0",
     "lint": "eslint",
     "server": "tsx server/index.ts",
-    "server:watch": "tsx watch server/index.ts"
+    "server:watch": "tsx watch server/index.ts",
+    "import:stations": "tsx scripts/importStations.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.1",

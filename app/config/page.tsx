@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useStations } from '@/lib/hooks/useStations';
 import { Station } from '@/lib/types';
 
@@ -12,6 +13,7 @@ const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   expectedPmPerHead: 3,
   expectedPmHead1: 3,
   expectedPmHead2: 3,
+  hasPi5: true,
   fanBrand: 'EBM',
   mqttTopics: {
     heartbeat:    '',
@@ -69,15 +71,82 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
 
 export default function ConfigPage() {
   const { stations: fetchedStations, loading: stationsLoading } = useStations();
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  const editId       = searchParams.get('edit');
   const [stations, setStations] = useState<Station[]>([]);
   const [mode, setMode] = useState<'list' | 'add' | 'edit'>('list');
+  const [form, setForm] = useState<FormState>({ ...EMPTY_STATION });
+  const [saved, setSaved] = useState(false);
+
+  // PIN gate
+  const [authState, setAuthState]   = useState<'checking' | 'locked' | 'unlocked'>('checking');
+  const [pinInput, setPinInput]     = useState('');
+  const [pinError, setPinError]     = useState('');
+  const [pinSubmitting, setPinSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/config-pin')
+      .then(r => r.json())
+      .then(j => setAuthState(j.ok ? 'unlocked' : 'locked'))
+      .catch(() => setAuthState('locked'));
+  }, []);
+
+  const submitPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinSubmitting(true);
+    setPinError('');
+    try {
+      const res = await fetch('/api/auth/config-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      if (res.ok) {
+        setAuthState('unlocked');
+        setPinInput('');
+      } else {
+        setPinError('Incorrect PIN');
+      }
+    } catch {
+      setPinError('Network error');
+    } finally {
+      setPinSubmitting(false);
+    }
+  };
+
+  const logout = async () => {
+    await fetch('/api/auth/config-pin', { method: 'DELETE' }).catch(() => {});
+    setAuthState('locked');
+  };
 
   // Sync when hook finishes loading
   useEffect(() => {
     if (!stationsLoading) setStations(fetchedStations);
   }, [fetchedStations, stationsLoading]);
-  const [form, setForm] = useState<FormState>({ ...EMPTY_STATION });
-  const [saved, setSaved] = useState(false);
+
+  const goToList = () => {
+    setMode('list');
+    if (editId) router.replace('/config');  // clear ?edit= from URL
+  };
+
+  // Auto-open edit form when ?edit=<id> is in URL (link from station detail page)
+  useEffect(() => {
+    if (!editId || stations.length === 0) return;
+    const target = stations.find(s => s.id === editId || s.name === editId);
+    if (!target) return;
+    setForm({
+      ...EMPTY_STATION,
+      ...target,
+      expectedPmHead1: target.expectedPmHead1 ?? target.expectedPmPerHead ?? 3,
+      expectedPmHead2: target.expectedPmHead2 ?? target.expectedPmPerHead ?? 3,
+      hasPi5: target.hasPi5 ?? true,
+      mqttTopics:       { ...EMPTY_STATION.mqttTopics,       ...(target.mqttTopics       || {}) },
+      mongoCollections: { ...EMPTY_STATION.mongoCollections, ...(target.mongoCollections || {}) },
+      telegram:         { ...EMPTY_STATION.telegram,         ...(target.telegram         || {}) },
+    });
+    setMode('edit');
+  }, [editId, stations]);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const setTopic   = (key: keyof Station['mqttTopics'],       val: string) =>
@@ -119,13 +188,77 @@ export default function ConfigPage() {
 
     setSaving(false);
     setSaved(true);
-    setTimeout(() => { setSaved(false); setMode('list'); }, 1500);
+    setTimeout(() => { setSaved(false); goToList(); }, 1500);
   };
+
+  const [search, setSearch] = useState('');
+
+  const filteredStations = search.trim() === ''
+    ? stations
+    : stations.filter(s => {
+        const q = search.toLowerCase();
+        return (
+          (s.id          || '').toLowerCase().includes(q) ||
+          (s.name        || '').toLowerCase().includes(q) ||
+          (s.displayName || '').toLowerCase().includes(q) ||
+          (s.location    || '').toLowerCase().includes(q)
+        );
+      });
 
   const handleDelete = (id: string) => {
     setStations(prev => prev.filter(s => s.id !== id));
     setDeleteConfirm(null);
   };
+
+  // ── PIN gate ────────────────────────────────────────────────────────────────
+  if (authState === 'checking') {
+    return (
+      <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+        Checking access...
+      </div>
+    );
+  }
+
+  if (authState === 'locked') {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '4rem' }}>
+        <div className="card" style={{ width: '100%', maxWidth: 360, padding: '2rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%',
+              background: 'var(--info-bg)', color: 'var(--info-text)',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 26, marginBottom: 12,
+            }}>
+              ◔
+            </div>
+            <h1 className="section-title" style={{ fontSize: 18 }}>Station Config — Locked</h1>
+            <p className="section-subtitle">Enter PIN to access configuration</p>
+          </div>
+          <form onSubmit={submitPin} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              className="input"
+              placeholder="••••"
+              value={pinInput}
+              onChange={e => setPinInput(e.target.value)}
+              style={{ fontSize: 18, letterSpacing: '0.4em', textAlign: 'center', padding: '12px 14px' }}
+            />
+            {pinError && (
+              <div style={{ fontSize: 12, color: 'var(--error-text)', textAlign: 'center' }}>{pinError}</div>
+            )}
+            <button type="submit" className="btn btn-primary"
+              disabled={!pinInput || pinSubmitting}
+              style={{ opacity: pinInput && !pinSubmitting ? 1 : 0.5, justifyContent: 'center' }}>
+              {pinSubmitting ? 'Verifying...' : 'Unlock'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // ── List ────────────────────────────────────────────────────────────────────
   if (mode === 'list') {
@@ -134,15 +267,37 @@ export default function ConfigPage() {
         <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 className="section-title" style={{ fontSize: 18 }}>Station Config</h1>
-            <p className="section-subtitle">{stations.length} stations configured</p>
+            <p className="section-subtitle">
+              {stations.length} stations configured
+              {search.trim() && filteredStations.length !== stations.length && ` · ${filteredStations.length} shown`}
+            </p>
           </div>
-          <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_STATION }); setMode('add'); }}>
-            + Add Station
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              className="input"
+              placeholder="Search stations..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ width: 220, fontSize: 12 }}
+            />
+            <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_STATION }); setMode('add'); }}>
+              + Add Station
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={logout} title="Lock config">
+              ◔ Lock
+            </button>
+          </div>
         </div>
 
+        {filteredStations.length === 0 && search.trim() && (
+          <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+            No stations match &quot;{search}&quot;
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {stations.map(station => (
+          {filteredStations.map(station => (
             <div key={station.id} className="card" style={{ padding: '1rem 1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -178,6 +333,7 @@ export default function ConfigPage() {
                       // Backwards-compat: if old config has only expectedPmPerHead, use it for both heads
                       expectedPmHead1: station.expectedPmHead1 ?? station.expectedPmPerHead ?? 3,
                       expectedPmHead2: station.expectedPmHead2 ?? station.expectedPmPerHead ?? 3,
+                      hasPi5: station.hasPi5 ?? true,
                       mqttTopics:       { ...EMPTY_STATION.mqttTopics,       ...(station.mqttTopics       || {}) },
                       mongoCollections: { ...EMPTY_STATION.mongoCollections, ...(station.mongoCollections || {}) },
                       telegram:         { ...EMPTY_STATION.telegram,         ...(station.telegram         || {}) },
@@ -205,7 +361,7 @@ export default function ConfigPage() {
   return (
     <div>
       <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button className="btn btn-secondary btn-sm" onClick={() => setMode('list')}>← Back</button>
+        <button className="btn btn-secondary btn-sm" onClick={goToList}>← Back</button>
         <div>
           <h1 className="section-title" style={{ fontSize: 18 }}>
             {mode === 'add' ? 'Add New Station' : `Edit — ${form.displayName || form.name || form.id}`}
@@ -264,6 +420,20 @@ export default function ConfigPage() {
                 <option value="Winstrom">Winstrom</option>
                 <option value="DAKO">DAKO</option>
               </select>
+            </div>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}>
+                <input type="checkbox"
+                  checked={form.hasPi5 ?? true}
+                  onChange={e => setForm(f => ({ ...f, hasPi5: e.target.checked }))}
+                  style={{ accentColor: 'var(--info)', width: 16, height: 16 }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  Station has Pi5 device
+                </span>
+              </label>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, marginLeft: 24 }}>
+                Uncheck if this station has no Pi5 — heartbeat panel will hide Pi5 row
+              </div>
             </div>
           </div>
         </div>
@@ -379,7 +549,7 @@ export default function ConfigPage() {
           disabled={!form.name.trim() || saving} style={{ opacity: form.name.trim() && !saving ? 1 : 0.5 }}>
           {saving ? 'Saving...' : `✓ ${mode === 'add' ? 'Add Station' : 'Save Changes'}`}
         </button>
-        <button className="btn btn-secondary" onClick={() => setMode('list')}>Cancel</button>
+        <button className="btn btn-secondary" onClick={goToList}>Cancel</button>
         {saved && (
           <span className="badge badge-ok">
             <span className="led led-ok" />

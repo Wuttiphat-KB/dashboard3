@@ -23,14 +23,18 @@ export async function GET() {
     client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 8000 });
     await client.connect();
 
-    // 1. Load all station configs
+    // 1. Load all station configs (skip internal cache collections + dedupe by id)
     const stDb = client.db(STATION_DB);
     const cols = await stDb.listCollections().toArray();
     const stations: any[] = [];
+    const seenIds = new Set<string>();
     for (const col of cols) {
-      if (col.name.startsWith('system.')) continue;
+      if (col.name.startsWith('system.') || col.name.startsWith('_')) continue;
       const doc = await stDb.collection(col.name).findOne();
-      if (doc && doc.id) stations.push(doc);
+      if (doc && doc.id && !seenIds.has(doc.id)) {
+        seenIds.add(doc.id);
+        stations.push(doc);
+      }
     }
 
     // 2. Load live device status + router data + script status + plc data from backend
@@ -44,7 +48,13 @@ export async function GET() {
     // 3. For each station, fetch summary data
     const now = Date.now();
     const results = await Promise.all(stations.map(async (st) => {
-      const colName = st.mongoCollections?.meter || st.name;
+      // Per-database collection name (each db may use a different collection per station)
+      const cols = st.mongoCollections || {};
+      const colHeartbeat = cols.heartbeatFallingEdge || st.name;
+      const colMeter     = cols.meter       || st.name;
+      const colPM        = cols.powerModule || st.name;
+      const colRouter    = cols.router      || st.name;
+      const colPlc       = cols.statePlc    || st.name;
 
       // Heartbeat — prefer live status from backend, fallback to MongoDB
       const liveHb = liveStatuses.find((d: any) => d.stationId === st.id && d.device === 'heartbeat');
@@ -63,7 +73,7 @@ export async function GET() {
       if (liveHb?.lastSeen) {
         hbTs = liveHb.lastSeen instanceof Date ? liveHb.lastSeen.toISOString() : liveHb.lastSeen;
       } else {
-        const hbDoc = await client!.db(DATA_DBS.heartbeat).collection(colName)
+        const hbDoc = await client!.db(DATA_DBS.heartbeat).collection(colHeartbeat)
           .findOne({}, { sort: { _id: -1 } }).catch(() => null);
         hbTs = hbDoc?.payload?.timestamp || null;
       }
@@ -73,7 +83,7 @@ export async function GET() {
       if (liveRt?.lastSeen) {
         rtTs = liveRt.lastSeen instanceof Date ? liveRt.lastSeen.toISOString() : liveRt.lastSeen;
       } else {
-        const rtDoc = await client!.db(DATA_DBS.router).collection(colName)
+        const rtDoc = await client!.db(DATA_DBS.router).collection(colRouter)
           .findOne({}, { sort: { _id: -1 } }).catch(() => null);
         rtTs = rtDoc?.payload?.timestamp || null;
       }
@@ -84,13 +94,21 @@ export async function GET() {
         : null;
       const pi5Online = computeOnline(pi5Ts);
 
-      // Meter latest
-      const mtDoc = await client!.db(DATA_DBS.meter).collection(colName)
-        .findOne({}, { sort: { _id: -1 } }).catch(() => null);
+      // Meter — latest + one from > 2 days ago for stalled detection
+      const meterCol = client!.db(DATA_DBS.meter).collection(colMeter);
+      const cutoff = new Date(Date.now() - 2 * 86_400_000);
+      const [mtDoc, mtOldDoc] = await Promise.all([
+        meterCol.findOne({}, { sort: { _id: -1 } }).catch(() => null),
+        meterCol.findOne({ receivedAt: { $lte: cutoff } }, { sort: { receivedAt: -1 } }).catch(() => null),
+      ]);
       const mp = mtDoc?.payload || {};
+      const mpOld = mtOldDoc?.payload || null;
+      // Stalled = value at >2 days ago is the same as current value
+      const stalled1 = mpOld != null && Number(mpOld.meter1 ?? 0) === Number(mp.meter1 ?? 0);
+      const stalled2 = mpOld != null && Number(mpOld.meter2 ?? 0) === Number(mp.meter2 ?? 0);
 
       // Power Module — query latest for EACH head separately
-      const pmCol = client!.db(DATA_DBS.powerModule).collection(colName);
+      const pmCol = client!.db(DATA_DBS.powerModule).collection(colPM);
       const [pm1Doc, pm2Doc] = await Promise.all([
         pmCol.findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null),
         pmCol.findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null),
@@ -114,7 +132,7 @@ export async function GET() {
       const plcLive = plcDataDocs.find((d: any) => d.stationId === st.id)?.payload;
       const plcDoc = plcLive
         ? null  // live data takes precedence
-        : await client!.db(DATA_DBS.plc).collection(colName).findOne({}, { sort: { _id: -1 } }).catch(() => null);
+        : await client!.db(DATA_DBS.plc).collection(colPlc).findOne({}, { sort: { _id: -1 } }).catch(() => null);
       const plcSource = plcLive || plcDoc;
       const plcHeads = [1, 2].map(h => {
         if (!plcSource) return { head: h, chargeState: 'Unknown', powerKw: 0, soc: 0 };
@@ -139,8 +157,9 @@ export async function GET() {
         return !isNaN(t) && (now - t) < HB_TIMEOUT;
       };
 
-      // Compute status
-      const devices = [hbOnline, pi5Online, rtOnline];
+      // Compute status — exclude Pi5 if station has no Pi5 device
+      const hasPi5 = st.hasPi5 !== false;  // default true
+      const devices = hasPi5 ? [hbOnline, pi5Online, rtOnline] : [hbOnline, rtOnline];
       const onlineCount = devices.filter(Boolean).length;
       const status = onlineCount === 0 ? 'offline' : onlineCount === devices.length ? 'online' : 'degraded';
 
@@ -153,6 +172,7 @@ export async function GET() {
           expectedPmPerHead: st.expectedPmPerHead || 3,
           expectedPmHead1: st.expectedPmHead1 ?? st.expectedPmPerHead ?? 3,
           expectedPmHead2: st.expectedPmHead2 ?? st.expectedPmPerHead ?? 3,
+          hasPi5,
           fanBrand: st.fanBrand || 'EBM',
         },
         status,
@@ -171,6 +191,8 @@ export async function GET() {
           meter2Wh: Number(mp.meter2 ?? 0),
           timestamp1: mp.timestamp1 || '',
           timestamp2: mp.timestamp2 || '',
+          stalled1,
+          stalled2,
         },
         powerModule: [1, 2].map(h => pmHeads[h] || { head: h, pmCount: 0, voltage: 0, current: 0, powerKw: 0, timestamp: '', online: false }),
         plcHeads,

@@ -37,18 +37,25 @@ function deriveStatus(data: StationDashboardData): 'online' | 'degraded' | 'offl
   return onCnt === 0 ? 'offline' : onCnt === hbs.length ? 'online' : 'degraded';
 }
 
-function Shell({ station, data, children }: { station: Station; data: StationDashboardData; children: React.ReactNode }) {
+function Shell({ station, data, children, customBadge, borderColor }: {
+  station: Station;
+  data: StationDashboardData;
+  children: React.ReactNode;
+  customBadge?: React.ReactNode;
+  borderColor?: string;
+}) {
   const st = deriveStatus(data);
+  const defaultBorder = st === 'offline' ? 'var(--error)' : st === 'degraded' ? 'var(--warn)' : 'var(--border)';
   return (
     <div className="card" style={{
-      borderColor: st === 'offline' ? 'var(--error)' : st === 'degraded' ? 'var(--warn)' : 'var(--border)',
+      borderColor: borderColor ?? defaultBorder,
       display: 'flex', flexDirection: 'column', gap: 10,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName}</div>
         </div>
-        <StatusBadge status={st} />
+        {customBadge ?? <StatusBadge status={st} />}
       </div>
       <div style={{ height: 1, background: 'var(--border-subtle)' }} />
       {children}
@@ -115,16 +122,41 @@ function ChargeStateBadge({ state, powerKw, soc }: { state: string; powerKw: num
 }
 
 // ── Power Module ──────────────────────────────────────────────────────────────
+// Status here means PM completeness vs expected count, NOT device online/offline.
 function PowerModuleCard({ station, data }: { station: Station; data: StationDashboardData }) {
   const plcHeads = [data.plcData.head1, data.plcData.head2];
+  const expFor = (head: number) =>
+    head === 1 ? (station.expectedPmHead1 ?? station.expectedPmPerHead)
+               : (station.expectedPmHead2 ?? station.expectedPmPerHead);
+
+  // Determine PM completeness across all heads
+  const headStatuses = data.powerModuleHeads.map(h => {
+    const exp = expFor(h.head);
+    const missing = Math.max(0, exp - h.pmCount);
+    return { head: h.head, pmCount: h.pmCount, expected: exp, missing, isFull: missing === 0 && exp > 0 };
+  });
+  const allFull = headStatuses.every(s => s.isFull);
+  const anyMissing = headStatuses.some(s => s.missing > 0);
+
+  // Card-level status: FULL (green) / INCOMPLETE (warn) — no offline concept
+  const cardBorder = allFull ? 'var(--ok)' : anyMissing ? 'var(--warn)' : 'var(--border)';
+  const cardBadge = (
+    <span className={`badge ${allFull ? 'badge-ok' : 'badge-warn'}`}>
+      <span className={`led ${allFull ? 'led-ok led-pulse' : 'led-warn led-pulse'}`} />
+      {allFull ? 'FULL' : 'INCOMPLETE'}
+    </span>
+  );
+
   return (
-    <Shell station={station} data={data}>
+    <Shell station={station} data={data} customBadge={cardBadge} borderColor={cardBorder}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {data.powerModuleHeads.map(h => {
-          const ok     = h.online && h.pmCount > 0;
-          const color  = ok ? 'var(--ok)' : 'var(--error)';
-          const bg     = ok ? 'var(--ok-bg)' : 'var(--error-bg)';
-          const border = ok ? 'transparent' : 'var(--error)';
+          const exp = expFor(h.head);
+          const missing = Math.max(0, exp - h.pmCount);
+          const isFull = missing === 0 && exp > 0;
+          const color  = isFull ? 'var(--ok)' : 'var(--warn)';
+          const bg     = isFull ? 'var(--ok-bg)' : 'var(--warn-bg)';
+          const border = isFull ? 'transparent' : 'var(--warn)';
           const plc    = plcHeads.find(p => p.head === h.head);
 
           return (
@@ -141,17 +173,22 @@ function PowerModuleCard({ station, data }: { station: Station; data: StationDas
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                   <span style={{ fontSize: 28, fontWeight: 900, color, lineHeight: 1 }}>
-                    {h.online ? h.pmCount : '—'}
+                    {h.pmCount}
                   </span>
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>PM</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>/ {exp} PM</span>
                 </div>
               </div>
+              {missing > 0 && (
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--warn-text)', marginBottom: 6 }}>
+                  ⚠ {missing} module{missing > 1 ? 's' : ''} missing
+                </div>
+              )}
               {plc && (
                 <div style={{ marginBottom: 6 }}>
                   <ChargeStateBadge state={plc.chargeState} powerKw={plc.powerKw} soc={plc.soc} />
                 </div>
               )}
-              <div style={{ fontSize: 11, fontFamily: 'monospace', color: ok ? 'var(--text-muted)' : 'var(--error-text)' }}>
+              <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
                 {fmtTs(h.timestamp)} · {timeSince(h.timestamp)}
               </div>
             </div>
@@ -163,41 +200,68 @@ function PowerModuleCard({ station, data }: { station: Station; data: StationDas
 }
 
 // ── Meter ─────────────────────────────────────────────────────────────────────
+// Status here = "stalled" (no value change > 2 days), NOT online/offline.
+
+/** Smooth gradient: 0% green → 50% yellow → 100% red */
+function gaugeGradient(pct: number): string {
+  // Hue: 120 (green) at 0%, 60 (yellow) at 50%, 0 (red) at 100%
+  const hue = Math.max(0, Math.min(120, 120 - (pct * 1.2)));
+  return `hsl(${hue}, 70%, 50%)`;
+}
+
 function MeterCard({ station, data }: { station: Station; data: StationDashboardData }) {
-  const led1   = getMeterLed(data.meterHistory, 1);
-  const led2   = getMeterLed(data.meterHistory, 2);
+  // Stalled flags come from API (server-side compared >2-day-old doc)
+  const meterMeta = (data as any).__meterMeta || {};
+  const stalled1 = !!meterMeta.stalled1;
+  const stalled2 = !!meterMeta.stalled2;
   const latest = data.meterHistory[data.meterHistory.length - 1];
   const toKwh  = (wh: number) => (wh / 1000).toFixed(1);
 
   const meters = [
-    { n: '1', led: led1, val: latest?.meter1Wh ?? 0, ts: latest?.timestamp1 ?? '' },
-    { n: '2', led: led2, val: latest?.meter2Wh ?? 0, ts: latest?.timestamp2 ?? '' },
+    { n: '1', stalled: stalled1, val: latest?.meter1Wh ?? 0, ts: latest?.timestamp1 ?? '' },
+    { n: '2', stalled: stalled2, val: latest?.meter2Wh ?? 0, ts: latest?.timestamp2 ?? '' },
   ];
 
+  const anyStalled = stalled1 || stalled2;
+  const cardBorder = anyStalled ? 'var(--error)' : 'var(--border)';
+  const cardBadge  = anyStalled ? (
+    <span className="badge badge-error">
+      <span className="led led-error" />
+      STALLED
+    </span>
+  ) : (
+    <span className="badge badge-ok">
+      <span className="led led-ok led-pulse" />
+      ACTIVE
+    </span>
+  );
+
   return (
-    <Shell station={station} data={data}>
-      {meters.map(({ n, led, val, ts }) => {
+    <Shell station={station} data={data} customBadge={cardBadge} borderColor={cardBorder}>
+      {meters.map(({ n, stalled, val, ts }) => {
         const pct = Math.min((val / 1000 / METER_MAX_KWH) * 100, 100);
+        const ledColor = stalled ? 'var(--error)' : 'var(--ok)';
+        const fillColor = stalled ? 'var(--error)' : gaugeGradient(pct);
         return (
           <div key={n} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <div style={{
-                  width: 14, height: 14, borderRadius: '50%',
-                  background: led === 'ok' ? 'var(--ok)' : 'var(--error)',
-                  boxShadow: led === 'ok' ? '0 0 8px var(--ok)' : '0 0 8px var(--error)',
-                  animation: led === 'ok' ? 'pulse-led 2s ease-in-out infinite' : 'none',
+                  width: 12, height: 12, borderRadius: '50%',
+                  background: ledColor,
+                  boxShadow: `0 0 6px ${ledColor}`,
+                  animation: stalled ? 'none' : 'pulse-led 2s ease-in-out infinite',
                 }} />
-                <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Meter {n} (Head {n})</span>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Meter {n} (Head {n})</span>
               </div>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{toKwh(val)} kWh</span>
             </div>
             <div style={{ height: 7, background: 'var(--bg-elevated)', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${pct}%`, background: led === 'ok' ? 'var(--ok)' : 'var(--error)', borderRadius: 4, transition: 'width 0.4s' }} />
+              <div style={{ height: '100%', width: `${pct}%`, background: fillColor, borderRadius: 4, transition: 'width 0.4s, background 0.3s' }} />
             </div>
             {ts && (
-              <div style={{ fontSize: 9, fontFamily: 'monospace', color: led === 'error' ? 'var(--error-text)' : 'var(--text-muted)' }}>
-                {led === 'error' ? 'Stalled · ' : ''}Last: {fmtTs(ts)} · {timeSince(ts)}
+              <div style={{ fontSize: 10, fontFamily: 'monospace', color: stalled ? 'var(--error-text)' : 'var(--text-muted)' }}>
+                {stalled ? 'Stalled · ' : ''}Last: {fmtTs(ts)} · {timeSince(ts)}
               </div>
             )}
           </div>
@@ -208,57 +272,91 @@ function MeterCard({ station, data }: { station: Station; data: StationDashboard
 }
 
 // ── Temperature ───────────────────────────────────────────────────────────────
+// Status here = temperature level (NORMAL / WARNING / CRITICAL), not online/offline.
+
+interface RssiCategory { label: string; color: string; bg: string; }
+function rssiCategory(rssi: number): RssiCategory {
+  if (rssi === 0) return { label: '—',         color: 'var(--text-muted)',     bg: 'var(--bg-elevated)' };
+  if (rssi >= -70) return { label: 'Excellent', color: '#1a7f37',               bg: 'rgba(63, 185, 80, 0.18)' };
+  if (rssi >= -80) return { label: 'Good',      color: '#9a8a00',               bg: 'rgba(210, 180, 50, 0.20)' };
+  if (rssi >= -90) return { label: 'Fair',      color: '#b35900',               bg: 'rgba(255, 140, 50, 0.22)' };
+  return            { label: 'Weak',      color: '#a40e26',               bg: 'rgba(248, 81, 73, 0.20)' };
+}
+
 function TemperatureCard({ station, data }: { station: Station; data: StationDashboardData }) {
-  const THRESH  = 80;
   const current = data.routerData.tempRaw / 10;
-  const isAlert = current >= THRESH;
-  const isWarn  = current >= THRESH - 10;
-  const color   = isAlert ? 'var(--error)' : isWarn ? 'var(--warn)' : 'var(--ok)';
-  const pct     = Math.min((current / 120) * 100, 100);
+  const hasData = current > 0;
+
+  // Temperature thresholds — NOT related to online/offline
+  const isCritical = current >= 80;
+  const isWarning  = current >= 70 && current < 80;
+  const tempColor  = !hasData ? 'var(--text-muted)' : isCritical ? 'var(--error)' : isWarning ? 'var(--warn)' : 'var(--ok)';
+  const pct        = Math.min((current / 120) * 100, 100);
+
+  const rssi = data.routerData.rssi || 0;
+  const rssiCat = rssiCategory(rssi);
+
+  // Card-level status from temperature, not heartbeat
+  const cardBorder = isCritical ? 'var(--error)' : isWarning ? 'var(--warn)' : 'var(--border)';
+  const cardBadge = (
+    <span className={`badge ${isCritical ? 'badge-error' : isWarning ? 'badge-warn' : 'badge-ok'}`}>
+      <span className={`led ${isCritical ? 'led-error' : isWarning ? 'led-warn led-pulse' : 'led-ok led-pulse'}`} />
+      {!hasData ? 'NO DATA' : isCritical ? 'CRITICAL' : isWarning ? 'WARNING' : 'NORMAL'}
+    </span>
+  );
+
+  const r = 34;
+  const C = 2 * Math.PI * r;
+
+  // Larger gauge — temperature is the hero element
+  const gaugeR = 52;
+  const gaugeC = 2 * Math.PI * gaugeR;
+  const gaugeSize = 130;
 
   return (
-    <Shell station={station} data={data}>
-      {isAlert && (
-        <div style={{ padding: '5px 8px', background: 'var(--error-bg)', borderRadius: 4, fontSize: 10, color: 'var(--error-text)', borderLeft: '3px solid var(--error)' }}>
-          Telegram alert triggered — {current.toFixed(1)} °C
-        </div>
-      )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <svg width="68" height="68" viewBox="0 0 68 68">
-            <circle cx="34" cy="34" r="28" fill="none" stroke="var(--bg-elevated)" strokeWidth="6" />
-            <circle cx="34" cy="34" r="28" fill="none" stroke={color} strokeWidth="6"
-              strokeDasharray={`${(pct / 100) * 2 * Math.PI * 28} ${2 * Math.PI * 28}`}
-              strokeLinecap="round" transform="rotate(-90 34 34)" />
+    <Shell station={station} data={data} customBadge={cardBadge} borderColor={cardBorder}>
+      {/* HERO: Big centered temperature gauge */}
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 6px' }}>
+        <div style={{ position: 'relative' }}>
+          <svg width={gaugeSize} height={gaugeSize} viewBox={`0 0 ${gaugeSize} ${gaugeSize}`}>
+            <circle cx={gaugeSize / 2} cy={gaugeSize / 2} r={gaugeR} fill="none" stroke="var(--bg-elevated)" strokeWidth="9" />
+            <circle cx={gaugeSize / 2} cy={gaugeSize / 2} r={gaugeR} fill="none"
+              stroke={tempColor} strokeWidth="9"
+              strokeDasharray={`${(pct / 100) * gaugeC} ${gaugeC}`}
+              strokeLinecap="round" transform={`rotate(-90 ${gaugeSize / 2} ${gaugeSize / 2})`}
+              style={{ transition: 'stroke-dasharray 0.4s ease, stroke 0.3s ease' }} />
           </svg>
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: 14, fontWeight: 800, color, lineHeight: 1 }}>{data.routerData.online ? current.toFixed(0) : '—'}</span>
-            <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>°C</span>
-          </div>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-            {[
-              { label: 'Temp',      value: data.routerData.online ? `${current.toFixed(1)} °C` : '—', color },
-              { label: 'Threshold', value: `${THRESH} °C`,    color: 'var(--text-muted)' },
-              { label: 'RSSI',      value: `${data.routerData.rssi} dBm`, color: 'var(--text-secondary)' },
-              { label: 'Conn',      value: data.routerData.conntype,       color: 'var(--info-text)' },
-            ].map(s => (
-              <div key={s.label} style={{ background: 'var(--bg-elevated)', borderRadius: 4, padding: '5px 7px' }}>
-                <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{s.label}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: s.color }}>{s.value}</div>
-              </div>
-            ))}
+            <span style={{ fontSize: 38, fontWeight: 900, color: tempColor, lineHeight: 1, letterSpacing: '-0.02em' }}>
+              {hasData ? current.toFixed(0) : '—'}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', marginTop: 4, letterSpacing: '0.05em' }}>°C</span>
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 9, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+
+      {/* Secondary: compact RSSI pill */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '4px 2px' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Signal
+        </span>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 7,
+          padding: '3px 10px', borderRadius: 12,
+          background: rssiCat.bg, border: `1px solid ${rssiCat.color}`,
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: rssiCat.color, letterSpacing: '0.02em' }}>
+            {rssiCat.label}
+          </span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: rssiCat.color, fontFamily: 'monospace', opacity: 0.85 }}>
+            {rssi !== 0 ? `${rssi}` : '—'} <span style={{ fontSize: 9, opacity: 0.7 }}>dBm</span>
+          </span>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-muted)' }}>
         Last: {fmtTs(data.routerData.lastSeen)} · {timeSince(data.routerData.lastSeen)}
       </div>
-      <span className={`badge ${isAlert ? 'badge-error' : isWarn ? 'badge-warn' : 'badge-ok'}`} style={{ alignSelf: 'flex-start' }}>
-        <span className={`led ${isAlert ? 'led-error' : isWarn ? 'led-warn led-pulse' : 'led-ok led-pulse'}`} />
-        {isAlert ? 'CRITICAL' : isWarn ? 'WARNING' : 'NORMAL'}
-      </span>
     </Shell>
   );
 }
@@ -364,9 +462,11 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
     const data: StationDashboardData = {
       stationId: fl.station.id,
       heartbeats: [
-        { name: 'OCPP Device', key: 'heartbeat',    topic: '', lastSeen: fl.heartbeat.lastSeen || '', online: fl.heartbeat.online },
-        { name: 'Pi5',         key: 'heartbeatPi5', topic: '', lastSeen: fl.pi5.lastSeen || '',       online: fl.pi5.online },
-        { name: 'Router',      key: 'router',       topic: '', lastSeen: fl.router.lastSeen || '',   online: fl.router.online, connstate: fl.router.connstate },
+        { name: 'OCPP Device', key: 'heartbeat' as const,    topic: '', lastSeen: fl.heartbeat.lastSeen || '', online: fl.heartbeat.online },
+        ...(fl.station.hasPi5 !== false ? [{
+          name: 'Pi5', key: 'heartbeatPi5' as const, topic: '', lastSeen: fl.pi5.lastSeen || '', online: fl.pi5.online,
+        }] : []),
+        { name: 'Router',      key: 'router' as const,       topic: '', lastSeen: fl.router.lastSeen || '',   online: fl.router.online, connstate: fl.router.connstate },
       ],
       routerData: {
         connstate: fl.router.connstate,
@@ -381,7 +481,7 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
         head: pm.head, pmCount: pm.pmCount, voltage: pm.voltage, current: pm.current,
         powerKw: pm.powerKw, prevVoltage: 0, prevCurrent: 0, timestamp: pm.timestamp, online: pm.online,
       })),
-      meterHistory: fl.meter.meter1Wh > 0 ? [{
+      meterHistory: fl.meter.meter1Wh > 0 || fl.meter.meter2Wh > 0 ? [{
         meter1Wh: fl.meter.meter1Wh, meter2Wh: fl.meter.meter2Wh,
         timestamp1: fl.meter.timestamp1, timestamp2: fl.meter.timestamp2, timestamp: fl.meter.timestamp1,
       }] : [],
@@ -399,27 +499,50 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
         lem1Status: 'Unknown', lem2Status: 'Unknown', fanStatus1_8: '0', timestamp: '',
       },
     };
+    // Attach stalled meta from fleet API (used by MeterCard)
+    (data as any).__meterMeta = { stalled1: fl.meter.stalled1, stalled2: fl.meter.stalled2 };
     return { station, data };
   }).sort((a, b) => a.station.id.localeCompare(b.station.id));
 
-  // Search filter
+  // Search filter — guard against missing fields from API
   const filtered = search.trim() === ''
     ? allData
     : allData.filter(({ station }) => {
         const q = search.toLowerCase();
         return (
-          station.id.toLowerCase().includes(q) ||
-          station.name.toLowerCase().includes(q) ||
-          station.displayName.toLowerCase().includes(q) ||
-          station.location.toLowerCase().includes(q)
+          (station.id          || '').toLowerCase().includes(q) ||
+          (station.name        || '').toLowerCase().includes(q) ||
+          (station.displayName || '').toLowerCase().includes(q) ||
+          (station.location    || '').toLowerCase().includes(q)
         );
       });
 
-  // Sort
+  // Sort — page-specific "Problems First" criteria
   const sorted = sort === 'problems'
-    ? [...filtered].sort((a, b) =>
-        STATUS_ORDER[deriveStatus(a.data)] - STATUS_ORDER[deriveStatus(b.data)]
-      )
+    ? [...filtered].sort((a, b) => {
+        if (type === 'powermodule') {
+          const missingA = a.data.powerModuleHeads.reduce((s, h) => {
+            const exp = h.head === 1 ? (a.station.expectedPmHead1 ?? a.station.expectedPmPerHead) : (a.station.expectedPmHead2 ?? a.station.expectedPmPerHead);
+            return s + Math.max(0, exp - h.pmCount);
+          }, 0);
+          const missingB = b.data.powerModuleHeads.reduce((s, h) => {
+            const exp = h.head === 1 ? (b.station.expectedPmHead1 ?? b.station.expectedPmPerHead) : (b.station.expectedPmHead2 ?? b.station.expectedPmPerHead);
+            return s + Math.max(0, exp - h.pmCount);
+          }, 0);
+          return missingB - missingA;  // most missing first
+        }
+        if (type === 'meter') {
+          const stalledA = ((a.data as any).__meterMeta?.stalled1 ? 1 : 0) + ((a.data as any).__meterMeta?.stalled2 ? 1 : 0);
+          const stalledB = ((b.data as any).__meterMeta?.stalled1 ? 1 : 0) + ((b.data as any).__meterMeta?.stalled2 ? 1 : 0);
+          return stalledB - stalledA;  // most stalled first
+        }
+        if (type === 'temperature') {
+          const tempA = a.data.routerData.tempRaw / 10;
+          const tempB = b.data.routerData.tempRaw / 10;
+          return tempB - tempA;  // hottest first
+        }
+        return STATUS_ORDER[deriveStatus(a.data)] - STATUS_ORDER[deriveStatus(b.data)];
+      })
     : filtered;
 
   // Fleet totals for heartbeat
@@ -468,13 +591,13 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
     }
     if (type === 'meter') {
       const totalMeters = allData.length * 2;
-      const stalled1 = allData.filter(x => getMeterLed(x.data.meterHistory, 1) === 'error').length;
-      const stalled2 = allData.filter(x => getMeterLed(x.data.meterHistory, 2) === 'error').length;
+      const stalled1 = allData.filter(x => (x.data as any).__meterMeta?.stalled1).length;
+      const stalled2 = allData.filter(x => (x.data as any).__meterMeta?.stalled2).length;
       const stalledTotal = stalled1 + stalled2;
       return [
-        { label: 'Total Meters',   value: `${totalMeters}`,               color: 'var(--text-primary)' },
-        { label: 'Active (green)', value: totalMeters - stalledTotal,      color: 'var(--ok)' },
-        { label: 'Stalled (red)',  value: stalledTotal,                    color: stalledTotal > 0 ? 'var(--error)' : 'var(--text-muted)' },
+        { label: 'Total Meters', value: `${totalMeters}`,           color: 'var(--text-primary)' },
+        { label: 'Active',       value: totalMeters - stalledTotal, color: 'var(--ok)' },
+        { label: 'Stalled',      value: stalledTotal,               color: stalledTotal > 0 ? 'var(--error)' : 'var(--text-muted)' },
       ];
     }
     if (type === 'temperature') {

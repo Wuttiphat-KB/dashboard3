@@ -4,13 +4,17 @@ import { MONGO_URI } from '@/lib/env';
 
 const STATION_DB = 'Station';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   let client: MongoClient | null = null;
   try {
+    // ?unack=1 → only unacknowledged; default → all (last 200)
+    const url = new URL(req.url);
+    const onlyUnack = url.searchParams.get('unack') === '1';
+
     client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
     await client.connect();
     const alerts = await client.db(STATION_DB).collection('_alerts')
-      .find({ acknowledged: false })
+      .find(onlyUnack ? { acknowledged: false } : {})
       .sort({ timestamp: -1 })
       .limit(200)
       .toArray();

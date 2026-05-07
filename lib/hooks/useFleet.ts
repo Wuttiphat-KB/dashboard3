@@ -12,6 +12,7 @@ export interface FleetStation {
     expectedPmPerHead: number;
     expectedPmHead1: number;
     expectedPmHead2: number;
+    hasPi5: boolean;
     fanBrand: string;
   };
   status: 'online' | 'degraded' | 'offline';
@@ -30,6 +31,8 @@ export interface FleetStation {
     meter2Wh: number;
     timestamp1: string;
     timestamp2: string;
+    stalled1: boolean;
+    stalled2: boolean;
   };
   powerModule: {
     head: number;

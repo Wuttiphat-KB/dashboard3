@@ -86,6 +86,7 @@ function mkStation(
   return {
     id, name: id, displayName: displayName ?? id, location, chargerHeads: 2,
     expectedPmPerHead, expectedPmHead1: expectedPmPerHead, expectedPmHead2: expectedPmPerHead,
+    hasPi5: true,
     fanBrand,
     mqttTopics: {
       heartbeat:    `ev/${code}/heartbeat`,

@@ -55,9 +55,12 @@ export function useDashboard(stationId: string) {
 function mapApiToDashboard(stationId: string, raw: any): StationDashboardData {
   const hb = raw.heartbeat || {};
   const pi5 = raw.pi5 || {};
+  const hasPi5 = raw.station?.hasPi5 !== false;  // default true
   const heartbeats: HeartbeatDevice[] = [
     { name: 'OCPP Device', key: 'heartbeat',    topic: '', lastSeen: hb.lastSeen || '', online: !!hb.online },
-    { name: 'Pi5',         key: 'heartbeatPi5', topic: '', lastSeen: pi5.lastSeen || '', online: !!pi5.online },
+    ...(hasPi5 ? [{
+      name: 'Pi5', key: 'heartbeatPi5' as const, topic: '', lastSeen: pi5.lastSeen || '', online: !!pi5.online,
+    }] : []),
     { name: 'Router',      key: 'router',       topic: '', lastSeen: raw.routerData?.lastSeen || '', online: !!raw.routerData?.online, connstate: raw.routerData?.connstate || 'Unknown' },
   ];
 

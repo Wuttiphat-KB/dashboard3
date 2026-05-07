@@ -91,7 +91,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
               {station.chargerHeads} charger head{station.chargerHeads > 1 ? 's' : ''} · Router: {data.routerData.connstate}
             </div>
           </div>
-          <Link href="/config" className="btn btn-secondary btn-sm">◧ Config</Link>
+          <Link href={`/config?edit=${station.id}`} className="btn btn-secondary btn-sm">◧ Config</Link>
         </div>
 
         {/* Quick stats */}

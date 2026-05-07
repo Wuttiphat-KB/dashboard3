@@ -38,6 +38,7 @@ export interface Station {
   expectedPmPerHead: number;     // DEPRECATED — kept for backwards compatibility (use head1/head2 below)
   expectedPmHead1:  number;      // expected PM count for charger head 1
   expectedPmHead2:  number;      // expected PM count for charger head 2
+  hasPi5?:          boolean;     // station has Pi5 device — default true (treat undefined as true)
   fanBrand:         FanBrand;    // fan manufacturer: EBM, Winstrom, DAKO
   mqttTopics:       MqttTopics;
   mongoCollections: MongoCollections;

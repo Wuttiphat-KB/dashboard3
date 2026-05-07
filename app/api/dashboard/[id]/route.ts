@@ -42,7 +42,13 @@ export async function GET(
       return NextResponse.json({ error: `Station ${id} not found` }, { status: 404 });
     }
 
-    const colName = stationConfig.mongoCollections?.meter || stationConfig.name;
+    // Per-database collection name (each db may use a different collection)
+    const cols = stationConfig.mongoCollections || {};
+    const colHeartbeat = cols.heartbeatFallingEdge || stationConfig.name;
+    const colMeter     = cols.meter       || stationConfig.name;
+    const colPM        = cols.powerModule || stationConfig.name;
+    const colRouter    = cols.router      || stationConfig.name;
+    const colPlc       = cols.statePlc    || stationConfig.name;
 
     // 2. Fetch data from each database in parallel
     const [
@@ -54,33 +60,32 @@ export async function GET(
       plcDoc,
     ] = await Promise.all([
       // Heartbeat — latest 50 for edge history
-      client.db(DATA_DBS.heartbeat).collection(colName)
+      client.db(DATA_DBS.heartbeat).collection(colHeartbeat)
         .find().sort({ _id: -1 }).limit(50).toArray()
         .catch(() => []),
 
       // Meter — latest 200 for charts
-      client.db(DATA_DBS.meter).collection(colName)
+      client.db(DATA_DBS.meter).collection(colMeter)
         .find().sort({ _id: -1 }).limit(200).toArray()
         .catch(() => []),
 
-      // Power Module — latest 10 (covers both heads)
       // PM head 1 (latest doc that contains PM1)
-      client.db(DATA_DBS.powerModule).collection(colName)
+      client.db(DATA_DBS.powerModule).collection(colPM)
         .findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 } })
         .catch(() => null),
 
       // PM head 2 (latest doc that contains PM2)
-      client.db(DATA_DBS.powerModule).collection(colName)
+      client.db(DATA_DBS.powerModule).collection(colPM)
         .findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 } })
         .catch(() => null),
 
       // Router — latest 50
-      client.db(DATA_DBS.router).collection(colName)
+      client.db(DATA_DBS.router).collection(colRouter)
         .find().sort({ _id: -1 }).limit(50).toArray()
         .catch(() => []),
 
       // PLC — latest 1
-      client.db(DATA_DBS.plc).collection(colName)
+      client.db(DATA_DBS.plc).collection(colPlc)
         .findOne({}, { sort: { _id: -1 } })
         .catch(() => null),
     ]);

@@ -20,8 +20,10 @@ function StatusDot({ status }: { status: 'online' | 'degraded' | 'offline' }) {
 
 function StationCard({ item }: { item: FleetStation }) {
   const { station, status, heartbeat, pi5, router, powerModule, plcHeads } = item;
-  const hbOnline  = [heartbeat.online, pi5.online, router.online].filter(Boolean).length;
-  const hbTotal   = 3;
+  const hasPi5    = station.hasPi5 !== false;
+  const hbDevices = hasPi5 ? [heartbeat.online, pi5.online, router.online] : [heartbeat.online, router.online];
+  const hbOnline  = hbDevices.filter(Boolean).length;
+  const hbTotal   = hbDevices.length;
   const pmTotal   = powerModule.reduce((s, h) => s + (h.online ? h.pmCount : 0), 0);
 
   return (
@@ -82,10 +84,10 @@ function StationCard({ item }: { item: FleetStation }) {
         {/* Device LEDs */}
         <div style={{ display: 'flex', gap: 5, marginBottom: 10, flexWrap: 'wrap' }}>
           {[
-            { label: 'OCPP', online: heartbeat.online },
-            { label: 'Pi5',  online: pi5.online },
-            { label: 'Router', online: router.online },
-          ].map(d => (
+            { label: 'OCPP', online: heartbeat.online, show: true },
+            { label: 'Pi5',  online: pi5.online,       show: hasPi5 },
+            { label: 'Router', online: router.online,  show: true },
+          ].filter(d => d.show).map(d => (
             <span key={d.label} style={{
               display: 'flex', alignItems: 'center', gap: 4,
               fontSize: 11, color: 'var(--text-secondary)',
