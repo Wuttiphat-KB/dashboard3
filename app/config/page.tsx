@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useStations } from '@/lib/hooks/useStations';
 import { Station } from '@/lib/types';
@@ -69,7 +69,7 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
   );
 }
 
-export default function ConfigPage() {
+function ConfigPageInner() {
   const { stations: fetchedStations, loading: stationsLoading } = useStations();
   const searchParams = useSearchParams();
   const router       = useRouter();
@@ -558,5 +558,17 @@ export default function ConfigPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ConfigPage() {
+  return (
+    <Suspense fallback={
+      <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+        Loading...
+      </div>
+    }>
+      <ConfigPageInner />
+    </Suspense>
   );
 }
