@@ -6,6 +6,7 @@ import { fmtTs } from '@/lib/formatTime';
 interface Props {
   plcData: PlcData;
   stationId: string;
+  chargerHeads?: number;
 }
 
 function GaugeBar({ value, max, color = 'var(--info)' }: { value: number; max: number; color?: string }) {
@@ -174,20 +175,23 @@ function ComponentStatus({ label, status }: { label: string; status: string }) {
   );
 }
 
-export default function PlcPanel({ plcData, stationId }: Props) {
-  const totalPower = plcData.head1.powerKw + plcData.head2.powerKw;
+export default function PlcPanel({ plcData, stationId, chargerHeads = 2 }: Props) {
+  const showHead2  = chargerHeads >= 2;
+  const totalPower = plcData.head1.powerKw + (showHead2 ? plcData.head2.powerKw : 0);
+
+  const summaryStats = [
+    { label: 'Total Power',  value: `${totalPower} kW`,                           color: 'var(--info)'  },
+    { label: showHead2 ? 'Head 1 State' : 'Charge State', value: plcData.head1.chargeState, color: chargeStateColor(plcData.head1.chargeState).text },
+    ...(showHead2 ? [{ label: 'Head 2 State', value: plcData.head2.chargeState, color: chargeStateColor(plcData.head2.chargeState).text }] : []),
+    { label: 'Ambient Temp', value: `${plcData.ambientTemp.toFixed(1)} °C`,       color: 'var(--text-secondary)' },
+    { label: 'Pi5 Temp',     value: `${plcData.pi5Temp.toFixed(1)} °C`,           color: plcData.pi5Temp > 70 ? 'var(--warn-text)' : 'var(--text-secondary)' },
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
-        {[
-          { label: 'Total Power',    value: `${totalPower} kW`,                           color: 'var(--info)'  },
-          { label: 'Head 1 State',   value: plcData.head1.chargeState,                   color: chargeStateColor(plcData.head1.chargeState).text },
-          { label: 'Head 2 State',   value: plcData.head2.chargeState,                   color: chargeStateColor(plcData.head2.chargeState).text },
-          { label: 'Ambient Temp',   value: `${plcData.ambientTemp.toFixed(1)} °C`,       color: 'var(--text-secondary)' },
-          { label: 'Pi5 Temp',       value: `${plcData.pi5Temp.toFixed(1)} °C`,           color: plcData.pi5Temp > 70 ? 'var(--warn-text)' : 'var(--text-secondary)' },
-        ].map(s => (
+        {summaryStats.map(s => (
           <div key={s.label} className="card" style={{ padding: '0.875rem' }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: s.color, marginBottom: 2 }}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
@@ -198,7 +202,7 @@ export default function PlcPanel({ plcData, stationId }: Props) {
       {/* Head cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
         <HeadCard head={plcData.head1} />
-        <HeadCard head={plcData.head2} />
+        {showHead2 && <HeadCard head={plcData.head2} />}
       </div>
 
       {/* System component status */}

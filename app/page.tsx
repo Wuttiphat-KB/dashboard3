@@ -21,10 +21,13 @@ function StatusDot({ status }: { status: 'online' | 'degraded' | 'offline' }) {
 function StationCard({ item }: { item: FleetStation }) {
   const { station, status, heartbeat, pi5, router, powerModule, plcHeads } = item;
   const hasPi5    = station.hasPi5 !== false;
+  const numHeads  = station.chargerHeads || 2;
+  const visiblePlcHeads = plcHeads.filter(h => h.head <= numHeads);
+  const visiblePmHeads  = powerModule.filter(h => h.head <= numHeads);
   const hbDevices = hasPi5 ? [heartbeat.online, pi5.online, router.online] : [heartbeat.online, router.online];
   const hbOnline  = hbDevices.filter(Boolean).length;
   const hbTotal   = hbDevices.length;
-  const pmTotal   = powerModule.reduce((s, h) => s + (h.online ? h.pmCount : 0), 0);
+  const pmTotal   = visiblePmHeads.reduce((s, h) => s + (h.online ? h.pmCount : 0), 0);
 
   return (
     <Link href={`/station/${station.id}`} style={{ textDecoration: 'none' }}>
@@ -61,12 +64,14 @@ function StationCard({ item }: { item: FleetStation }) {
 
         {/* Charge state per head */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 10 }}>
-          {plcHeads.map(p => {
+          {visiblePlcHeads.map(p => {
             const isCharging = p.chargeState === 'Charging';
             const isFault    = p.chargeState === 'Fault';
             return (
               <div key={p.head} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
-                <span style={{ fontWeight: 700, color: 'var(--text-secondary)', width: 20, flexShrink: 0 }}>H{p.head}</span>
+                {numHeads > 1 && (
+                  <span style={{ fontWeight: 700, color: 'var(--text-secondary)', width: 20, flexShrink: 0 }}>H{p.head}</span>
+                )}
                 <span className={`badge ${isCharging ? 'badge-warn' : isFault ? 'badge-error' : 'badge-offline'}`}>
                   <span className={`led ${isCharging ? 'led-warn led-pulse' : isFault ? 'led-error' : ''}`} />
                   {p.chargeState}

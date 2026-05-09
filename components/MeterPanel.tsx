@@ -8,6 +8,7 @@ import LineChart from './ui/LineChart';
 interface Props {
   history: MeterSnapshot[];
   stationId: string;
+  chargerHeads?: number;
 }
 
 const WH_TO_KWH = (wh: number) => wh / 1000;
@@ -112,9 +113,10 @@ function MeterGauge({ valueWh, label, led, stalled, timestamp }: {
   );
 }
 
-export default function MeterPanel({ history, stationId }: Props) {
+export default function MeterPanel({ history, stationId, chargerHeads = 2 }: Props) {
   const latest = history[history.length - 1];
   const oldest = history[0];
+  const showM2 = chargerHeads >= 2;
 
   const led1 = getMeterLed(history, 1);
   const led2 = getMeterLed(history, 2);
@@ -125,34 +127,38 @@ export default function MeterPanel({ history, stationId }: Props) {
   const chartData1 = history.map(s => ({ timestamp: s.timestamp1, value: WH_TO_KWH(s.meter1Wh) }));
   const chartData2 = history.map(s => ({ timestamp: s.timestamp2, value: WH_TO_KWH(s.meter2Wh) }));
 
+  const m1Label = showM2 ? 'Meter 1 (Head 1)' : 'Meter';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Dual meter gauges — each with its own timestamp */}
+      {/* Meter gauges */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
         <MeterGauge
           valueWh={latest?.meter1Wh ?? 0}
-          label="Meter 1 (Head 1)"
+          label={m1Label}
           led={led1}
           stalled={led1 === 'error'}
           timestamp={latest?.timestamp1 ?? new Date(0).toISOString()}
         />
-        <MeterGauge
-          valueWh={latest?.meter2Wh ?? 0}
-          label="Meter 2 (Head 2)"
-          led={led2}
-          stalled={led2 === 'error'}
-          timestamp={latest?.timestamp2 ?? new Date(0).toISOString()}
-        />
+        {showM2 && (
+          <MeterGauge
+            valueWh={latest?.meter2Wh ?? 0}
+            label="Meter 2 (Head 2)"
+            led={led2}
+            stalled={led2 === 'error'}
+            timestamp={latest?.timestamp2 ?? new Date(0).toISOString()}
+          />
+        )}
       </div>
 
       {/* Delta stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
         {[
-          { label: 'Meter 1 +48h', value: fmtKwh(delta1Wh), color: delta1Wh > 0 ? 'var(--ok)' : 'var(--text-muted)' },
-          { label: 'Meter 2 +48h', value: fmtKwh(delta2Wh), color: delta2Wh > 0 ? 'var(--ok)' : 'var(--text-muted)' },
-          { label: 'LED Meter 1',  value: led1 === 'ok' ? '● Active' : '● Stalled', color: led1 === 'ok' ? 'var(--ok)' : 'var(--error)' },
-          { label: 'LED Meter 2',  value: led2 === 'ok' ? '● Active' : '● Stalled', color: led2 === 'ok' ? 'var(--ok)' : 'var(--error)' },
-        ].map(s => (
+          { label: showM2 ? 'Meter 1 +48h' : 'Meter +48h', value: fmtKwh(delta1Wh), color: delta1Wh > 0 ? 'var(--ok)' : 'var(--text-muted)', show: true },
+          { label: 'Meter 2 +48h', value: fmtKwh(delta2Wh), color: delta2Wh > 0 ? 'var(--ok)' : 'var(--text-muted)', show: showM2 },
+          { label: showM2 ? 'LED Meter 1' : 'LED Meter',  value: led1 === 'ok' ? '● Active' : '● Stalled', color: led1 === 'ok' ? 'var(--ok)' : 'var(--error)', show: true },
+          { label: 'LED Meter 2',  value: led2 === 'ok' ? '● Active' : '● Stalled', color: led2 === 'ok' ? 'var(--ok)' : 'var(--error)', show: showM2 },
+        ].filter(s => s.show).map(s => (
           <div key={s.label} className="card" style={{ padding: '0.75rem' }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: s.color, marginBottom: 2 }}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
@@ -163,9 +169,9 @@ export default function MeterPanel({ history, stationId }: Props) {
       {/* Charts */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1rem' }}>
         {([
-          { data: chartData1, led: led1, label: 'Meter 1 (Head 1) — 48 h (kWh)', ts: latest?.timestamp1 },
-          { data: chartData2, led: led2, label: 'Meter 2 (Head 2) — 48 h (kWh)', ts: latest?.timestamp2 },
-        ] as const).map((m) => (
+          { data: chartData1, led: led1, label: showM2 ? 'Meter 1 (Head 1) — 48 h (kWh)' : 'Meter — 48 h (kWh)', ts: latest?.timestamp1, show: true },
+          { data: chartData2, led: led2, label: 'Meter 2 (Head 2) — 48 h (kWh)', ts: latest?.timestamp2, show: showM2 },
+        ] as const).filter(m => m.show).map((m) => (
           <div key={m.label} className="card">
             <div className="card-header">
               <span className="card-title">{m.label}</span>
@@ -195,14 +201,16 @@ export default function MeterPanel({ history, stationId }: Props) {
             <thead>
               <tr>
                 <th>Record Time</th>
-                <th>Meter 1 ts</th>
-                <th>Meter 1 (kWh)</th>
-                <th>Δ M1</th>
+                <th>{showM2 ? 'Meter 1 ts' : 'Meter ts'}</th>
+                <th>{showM2 ? 'Meter 1 (kWh)' : 'Meter (kWh)'}</th>
+                <th>{showM2 ? 'Δ M1' : 'Δ'}</th>
                 <th>LED</th>
-                <th>Meter 2 ts</th>
-                <th>Meter 2 (kWh)</th>
-                <th>Δ M2</th>
-                <th>LED</th>
+                {showM2 && <>
+                  <th>Meter 2 ts</th>
+                  <th>Meter 2 (kWh)</th>
+                  <th>Δ M2</th>
+                  <th>LED</th>
+                </>}
               </tr>
             </thead>
             <tbody>
@@ -224,14 +232,16 @@ export default function MeterPanel({ history, stationId }: Props) {
                       {d1 !== null ? (d1 > 0 ? `+${d1.toFixed(2)}` : d1.toFixed(2)) : '—'}
                     </td>
                     <td><span className={`led ${isLatest ? (led1 === 'ok' ? 'led-ok' : 'led-error') : 'led-offline'}`} /></td>
-                    <td style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                      {fmtTs(snap.timestamp2)}
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{WH_TO_KWH(snap.meter2Wh).toFixed(2)}</td>
-                    <td style={{ color: d2 && d2 > 0 ? 'var(--ok-text)' : 'var(--text-muted)', fontSize: 11 }}>
-                      {d2 !== null ? (d2 > 0 ? `+${d2.toFixed(2)}` : d2.toFixed(2)) : '—'}
-                    </td>
-                    <td><span className={`led ${isLatest ? (led2 === 'ok' ? 'led-ok' : 'led-error') : 'led-offline'}`} /></td>
+                    {showM2 && <>
+                      <td style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                        {fmtTs(snap.timestamp2)}
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{WH_TO_KWH(snap.meter2Wh).toFixed(2)}</td>
+                      <td style={{ color: d2 && d2 > 0 ? 'var(--ok-text)' : 'var(--text-muted)', fontSize: 11 }}>
+                        {d2 !== null ? (d2 > 0 ? `+${d2.toFixed(2)}` : d2.toFixed(2)) : '—'}
+                      </td>
+                      <td><span className={`led ${isLatest ? (led2 === 'ok' ? 'led-ok' : 'led-error') : 'led-offline'}`} /></td>
+                    </>}
                   </tr>
                 );
               })}

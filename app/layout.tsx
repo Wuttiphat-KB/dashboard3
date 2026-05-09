@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppShell from "@/components/AppShell";
@@ -16,6 +16,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "EV Monitor — Charger Station Dashboard",
   description: "Real-time EV charger station monitoring dashboard",
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: [
+    { media: '(prefers-color-scheme: dark)',  color: '#0d1117' },
+    { media: '(prefers-color-scheme: light)', color: '#f6f8fa' },
+  ],
 };
 
 export default function RootLayout({

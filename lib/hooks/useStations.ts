@@ -64,11 +64,14 @@ function mapApiToDashboard(stationId: string, raw: any): StationDashboardData {
     { name: 'Router',      key: 'router',       topic: '', lastSeen: raw.routerData?.lastSeen || '', online: !!raw.routerData?.online, connstate: raw.routerData?.connstate || 'Unknown' },
   ];
 
-  const pmHeads: PowerModuleHead[] = (raw.powerModuleHeads || []).map((h: any) => ({
-    head: h.head, pmCount: h.pmCount || 0, voltage: h.voltage || 0, current: h.current || 0,
-    powerKw: h.powerKw || 0, prevVoltage: h.prevVoltage || 0, prevCurrent: h.prevCurrent || 0,
-    timestamp: h.timestamp || '', online: h.online ?? false,
-  }));
+  const numHeads = raw.station?.chargerHeads || 2;
+  const pmHeads: PowerModuleHead[] = (raw.powerModuleHeads || [])
+    .filter((h: any) => h.head <= numHeads)
+    .map((h: any) => ({
+      head: h.head, pmCount: h.pmCount || 0, voltage: h.voltage || 0, current: h.current || 0,
+      powerKw: h.powerKw || 0, prevVoltage: h.prevVoltage || 0, prevCurrent: h.prevCurrent || 0,
+      timestamp: h.timestamp || '', online: h.online ?? false,
+    }));
 
   const meterHistory: MeterSnapshot[] = (raw.meterHistory || []).map((m: any) => ({
     meter1Wh: m.meter1Wh || 0, meter2Wh: m.meter2Wh || 0,

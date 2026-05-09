@@ -44,7 +44,7 @@ function PmBubbles({ count, expected }: { count: number; expected: number }) {
   );
 }
 
-function HeadCard({ head, expected, plcHead }: { head: PowerModuleHead; expected: number; plcHead?: { chargeState: string; powerKw: number; soc: number } }) {
+function HeadCard({ head, expected, plcHead, totalHeads }: { head: PowerModuleHead; expected: number; plcHead?: { chargeState: string; powerKw: number; soc: number }; totalHeads?: number }) {
   const isFull    = expected > 0 ? head.pmCount >= expected : head.pmCount > 0;
   const isOffline = !head.online;
   const borderColor = isOffline ? 'var(--border)' : isFull ? 'var(--ok)' : 'var(--error)';
@@ -66,7 +66,7 @@ function HeadCard({ head, expected, plcHead }: { head: PowerModuleHead; expected
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
-              Charger Head {head.head}
+              {totalHeads === 1 ? 'Charger' : `Charger Head ${head.head}`}
             </div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>
               MQTT: PM{head.head} field
@@ -199,6 +199,7 @@ export default function PowerModulePanel({ heads, stationId, expectedPmHead1, ex
           const plcHead = plcData ? (head.head === 1 ? plcData.head1 : plcData.head2) : undefined;
           return (
             <HeadCard key={head.head} head={head} expected={expectedFor(head.head)}
+              totalHeads={heads.length}
               plcHead={plcHead ? { chargeState: plcHead.chargeState, powerKw: plcHead.powerKw, soc: plcHead.soc } : undefined} />
           );
         })}

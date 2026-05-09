@@ -5,11 +5,21 @@ import Sidebar from './Sidebar';
 
 const SIDEBAR_W     = 220;
 const SIDEBAR_W_COL = 52;
+const MOBILE_BREAKPOINT = 768;
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed,   setCollapsed]   = useState(false);
   const [theme,       setTheme]       = useState<'dark' | 'light'>('dark');
+  const [isMobile,    setIsMobile]    = useState(false);
+
+  // Track mobile breakpoint
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   // Load saved theme on mount
   useEffect(() => {
@@ -26,7 +36,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     localStorage.setItem('ev-theme', next);
   };
 
-  const sideW = collapsed ? SIDEBAR_W_COL : SIDEBAR_W;
+  // On mobile, sidebar is overlay → main content has no left margin
+  const sideW = isMobile ? 0 : (collapsed ? SIDEBAR_W_COL : SIDEBAR_W);
 
   return (
     <div className="app-layout">

@@ -334,7 +334,95 @@ tr:hover td { background: var(--bg-elevated); }
   }
   .tabs::-webkit-scrollbar { display: none; }
   .tab { white-space: nowrap; flex-shrink: 0; }
-  .page-container { padding: 1rem 0.75rem; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINTS
+   - Mobile:        ≤ 640px   (phones)
+   - Tablet:        641–1024px
+   - Desktop:       1025–1919px (default)
+   - Large screen:  1920–2559px (HD / FullHD TV)
+   - Ultra/4K:      ≥ 2560px
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Mobile (≤ 640px) ──────────────────────── */
+@media (max-width: 640px) {
+  body { font-size: 13px; line-height: 1.5; }
+
+  .page-container { padding: 0.75rem 0.625rem; }
+  .card           { padding: 0.75rem; border-radius: 6px; }
+  .card-header    { margin-bottom: 0.5rem; padding-bottom: 0.5rem; }
+  .card-title     { font-size: 11px; }
+
+  .section-title    { font-size: 16px; }
+  .section-subtitle { font-size: 11px; }
+
+  .stat-value { font-size: 22px; }
+  .stat-label { font-size: 10px; }
+
+  .badge { font-size: 11px; padding: 2px 6px; }
+  .btn   { padding: 7px 12px; font-size: 12px; min-height: 36px; }
+  .btn-sm { min-height: 32px; padding: 6px 10px; }
+
+  .overview-grid { grid-template-columns: 1fr; gap: 0.625rem; }
+
+  .tab { padding: 8px 12px; font-size: 12px; }
+  .input { font-size: 14px; padding: 9px 11px; }
+
+  table { font-size: 12px; }
+  th    { font-size: 10px; padding: 6px 8px; }
+  td    { padding: 8px; }
+}
+
+/* ── Tablet (641–1024px) ───────────────────── */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .page-container { padding: 1.25rem 1rem; }
+  .overview-grid  { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .stat-value     { font-size: 24px; }
+}
+
+/* ── Large screen / FHD TV (1920–2559px) ──── */
+@media (min-width: 1920px) {
+  body { font-size: 16px; line-height: 1.6; }
+
+  .page-container { padding: 1.75rem 1.5rem; }
+  .card           { padding: 1.25rem; border-radius: 10px; }
+  .card-title     { font-size: 14px; }
+
+  .section-title    { font-size: 22px; }
+  .section-subtitle { font-size: 13px; }
+
+  .stat-value { font-size: 32px; }
+  .stat-label { font-size: 12px; }
+
+  .badge { font-size: 13px; padding: 3px 10px; }
+  .btn   { padding: 8px 18px; font-size: 14px; }
+  .btn-sm { padding: 6px 14px; font-size: 13px; }
+
+  .overview-grid { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 1.25rem; }
+
+  .tab { padding: 10px 20px; font-size: 14px; }
+  .input { font-size: 14px; padding: 9px 12px; }
+
+  table { font-size: 14px; }
+  th    { font-size: 12px; padding: 10px 14px; }
+  td    { padding: 12px 14px; }
+}
+
+/* ── 4K / Ultra-wide (≥ 2560px) ────────────── */
+@media (min-width: 2560px) {
+  body { font-size: 18px; }
+
+  .page-container { padding: 2rem 2rem; max-width: 2800px; margin: 0 auto; }
+  .card           { padding: 1.5rem; border-radius: 12px; }
+
+  .section-title { font-size: 26px; }
+  .stat-value    { font-size: 38px; }
+  .stat-label    { font-size: 13px; }
+
+  .overview-grid { grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 1.5rem; }
+
+  .tab { padding: 12px 24px; font-size: 16px; }
 }
 
 /* ── Light theme — MUST be last to win specificity ── */

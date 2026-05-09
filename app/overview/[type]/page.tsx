@@ -124,7 +124,8 @@ function ChargeStateBadge({ state, powerKw, soc }: { state: string; powerKw: num
 // ── Power Module ──────────────────────────────────────────────────────────────
 // Status here means PM completeness vs expected count, NOT device online/offline.
 function PowerModuleCard({ station, data }: { station: Station; data: StationDashboardData }) {
-  const plcHeads = [data.plcData.head1, data.plcData.head2];
+  const numHeads = station.chargerHeads || 2;
+  const plcHeads = numHeads >= 2 ? [data.plcData.head1, data.plcData.head2] : [data.plcData.head1];
   const expFor = (head: number) =>
     head === 1 ? (station.expectedPmHead1 ?? station.expectedPmPerHead)
                : (station.expectedPmHead2 ?? station.expectedPmPerHead);
@@ -216,13 +217,14 @@ function MeterCard({ station, data }: { station: Station; data: StationDashboard
   const stalled2 = !!meterMeta.stalled2;
   const latest = data.meterHistory[data.meterHistory.length - 1];
   const toKwh  = (wh: number) => (wh / 1000).toFixed(1);
+  const numHeads = station.chargerHeads || 2;
 
   const meters = [
     { n: '1', stalled: stalled1, val: latest?.meter1Wh ?? 0, ts: latest?.timestamp1 ?? '' },
-    { n: '2', stalled: stalled2, val: latest?.meter2Wh ?? 0, ts: latest?.timestamp2 ?? '' },
+    ...(numHeads >= 2 ? [{ n: '2', stalled: stalled2, val: latest?.meter2Wh ?? 0, ts: latest?.timestamp2 ?? '' }] : []),
   ];
 
-  const anyStalled = stalled1 || stalled2;
+  const anyStalled = stalled1 || (numHeads >= 2 && stalled2);
   const cardBorder = anyStalled ? 'var(--error)' : 'var(--border)';
   const cardBadge  = anyStalled ? (
     <span className="badge badge-error">
@@ -252,7 +254,7 @@ function MeterCard({ station, data }: { station: Station; data: StationDashboard
                   boxShadow: `0 0 6px ${ledColor}`,
                   animation: stalled ? 'none' : 'pulse-led 2s ease-in-out infinite',
                 }} />
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Meter {n} (Head {n})</span>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{numHeads > 1 ? `Meter ${n} (Head ${n})` : 'Meter'}</span>
               </div>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{toKwh(val)} kWh</span>
             </div>
@@ -368,7 +370,8 @@ function FanRPMCard({ station, data }: { station: Station; data: StationDashboar
     parseInt(a[0].replace('FAN ', '')) - parseInt(b[0].replace('FAN ', ''))
   );
   const runningN = entries.filter(([, r]) => r > 0).length;
-  const plcHeads = [data.plcData.head1, data.plcData.head2];
+  const numHeads = station.chargerHeads || 2;
+  const plcHeads = numHeads >= 2 ? [data.plcData.head1, data.plcData.head2] : [data.plcData.head1];
 
   return (
     <Shell station={station} data={data}>
@@ -376,7 +379,9 @@ function FanRPMCard({ station, data }: { station: Station; data: StationDashboar
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 2 }}>
         {plcHeads.map(p => (
           <div key={p.head} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', width: 20, flexShrink: 0 }}>H{p.head}</span>
+            {numHeads > 1 && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', width: 20, flexShrink: 0 }}>H{p.head}</span>
+            )}
             <ChargeStateBadge state={p.chargeState} powerKw={p.powerKw} soc={p.soc} />
           </div>
         ))}
@@ -477,10 +482,12 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
         operator: '', opernum: 0, ip: [], model: '', manuf: '', imei: '', iccid: '',
         lastSeen: fl.router.lastSeen || '', online: fl.router.online,
       },
-      powerModuleHeads: fl.powerModule.map(pm => ({
-        head: pm.head, pmCount: pm.pmCount, voltage: pm.voltage, current: pm.current,
-        powerKw: pm.powerKw, prevVoltage: 0, prevCurrent: 0, timestamp: pm.timestamp, online: pm.online,
-      })),
+      powerModuleHeads: fl.powerModule
+        .filter(pm => pm.head <= (fl.station.chargerHeads || 2))
+        .map(pm => ({
+          head: pm.head, pmCount: pm.pmCount, voltage: pm.voltage, current: pm.current,
+          powerKw: pm.powerKw, prevVoltage: 0, prevCurrent: 0, timestamp: pm.timestamp, online: pm.online,
+        })),
       meterHistory: fl.meter.meter1Wh > 0 || fl.meter.meter2Wh > 0 ? [{
         meter1Wh: fl.meter.meter1Wh, meter2Wh: fl.meter.meter2Wh,
         timestamp1: fl.meter.timestamp1, timestamp2: fl.meter.timestamp2, timestamp: fl.meter.timestamp1,
@@ -532,8 +539,10 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
           return missingB - missingA;  // most missing first
         }
         if (type === 'meter') {
-          const stalledA = ((a.data as any).__meterMeta?.stalled1 ? 1 : 0) + ((a.data as any).__meterMeta?.stalled2 ? 1 : 0);
-          const stalledB = ((b.data as any).__meterMeta?.stalled1 ? 1 : 0) + ((b.data as any).__meterMeta?.stalled2 ? 1 : 0);
+          const headsA = a.station.chargerHeads || 2;
+          const headsB = b.station.chargerHeads || 2;
+          const stalledA = ((a.data as any).__meterMeta?.stalled1 ? 1 : 0) + (headsA >= 2 && (a.data as any).__meterMeta?.stalled2 ? 1 : 0);
+          const stalledB = ((b.data as any).__meterMeta?.stalled1 ? 1 : 0) + (headsB >= 2 && (b.data as any).__meterMeta?.stalled2 ? 1 : 0);
           return stalledB - stalledA;  // most stalled first
         }
         if (type === 'temperature') {
@@ -590,9 +599,10 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
       ];
     }
     if (type === 'meter') {
-      const totalMeters = allData.length * 2;
+      // Total meters = sum of chargerHeads across stations (1-head stations contribute 1, 2-head contribute 2)
+      const totalMeters = allData.reduce((s, x) => s + (x.station.chargerHeads || 2), 0);
       const stalled1 = allData.filter(x => (x.data as any).__meterMeta?.stalled1).length;
-      const stalled2 = allData.filter(x => (x.data as any).__meterMeta?.stalled2).length;
+      const stalled2 = allData.filter(x => (x.station.chargerHeads || 2) >= 2 && (x.data as any).__meterMeta?.stalled2).length;
       const stalledTotal = stalled1 + stalled2;
       return [
         { label: 'Total Meters', value: `${totalMeters}`,           color: 'var(--text-primary)' },

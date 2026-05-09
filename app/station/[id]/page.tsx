@@ -113,15 +113,15 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
               ok: true,
             },
             {
-              label: 'Meter 1',
+              label: station.chargerHeads >= 2 ? 'Meter 1' : 'Meter',
               value: latest ? `${(latest.meter1Wh / 1000).toFixed(0)} kWh` : '—',
               ok: true,
             },
-            {
+            ...(station.chargerHeads >= 2 ? [{
               label: 'Meter 2',
               value: latest ? `${(latest.meter2Wh / 1000).toFixed(0)} kWh` : '—',
               ok: true,
-            },
+            }] : []),
             {
               label: 'Fans',
               value: `${fanCount}/${fanTotal}`,
@@ -166,11 +166,11 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
           expectedPmHead1={station.expectedPmHead1 ?? station.expectedPmPerHead}
           expectedPmHead2={station.expectedPmHead2 ?? station.expectedPmPerHead}
           plcData={data.plcData} />}
-        {tab === 'meter'       && <MeterPanel        history={data.meterHistory}   stationId={station.id} />}
+        {tab === 'meter'       && <MeterPanel        history={data.meterHistory}   stationId={station.id} chargerHeads={station.chargerHeads} />}
         {tab === 'temperature' && <TempPanel         routerData={data.routerData}  tempHistory={data.tempHistory} stationId={station.id} />}
         {tab === 'fanrpm'      && <FanRPMPanel       fanData={data.fanData}        stationId={station.id} />}
         {tab === 'scripts'     && <MqttScriptPanel   scripts={data.scripts}        stationId={station.id} />}
-        {tab === 'plc'         && <PlcPanel          plcData={data.plcData}        stationId={station.id} />}
+        {tab === 'plc'         && <PlcPanel          plcData={data.plcData}        stationId={station.id} chargerHeads={station.chargerHeads} />}
       </div>
     </div>
   );

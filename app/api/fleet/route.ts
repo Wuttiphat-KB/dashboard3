@@ -103,9 +103,11 @@ export async function GET() {
       ]);
       const mp = mtDoc?.payload || {};
       const mpOld = mtOldDoc?.payload || null;
+      const stationHeads = Number(st.chargerHeads) || 2;
       // Stalled = value at >2 days ago is the same as current value
+      // For single-head stations, ignore meter2 (always false)
       const stalled1 = mpOld != null && Number(mpOld.meter1 ?? 0) === Number(mp.meter1 ?? 0);
-      const stalled2 = mpOld != null && Number(mpOld.meter2 ?? 0) === Number(mp.meter2 ?? 0);
+      const stalled2 = stationHeads >= 2 && mpOld != null && Number(mpOld.meter2 ?? 0) === Number(mp.meter2 ?? 0);
 
       // Power Module — query latest for EACH head separately
       const pmCol = client!.db(DATA_DBS.powerModule).collection(colPM);

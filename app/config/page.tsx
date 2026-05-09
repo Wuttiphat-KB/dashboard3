@@ -391,21 +391,23 @@ function ConfigPageInner() {
                 onChange={e => setForm(f => ({ ...f, chargerHeads: Number(e.target.value) }))}
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: form.chargerHeads >= 2 ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
               <div>
-                <label className="input-label">Expected PM — Head 1</label>
+                <label className="input-label">{form.chargerHeads >= 2 ? 'Expected PM — Head 1' : 'Expected PM'}</label>
                 <input className="input" type="number" min={1} max={10}
                   value={form.expectedPmHead1 ?? 3}
                   onChange={e => setForm(f => ({ ...f, expectedPmHead1: Number(e.target.value) }))}
                 />
               </div>
-              <div>
-                <label className="input-label">Expected PM — Head 2</label>
-                <input className="input" type="number" min={1} max={10}
-                  value={form.expectedPmHead2 ?? 3}
-                  onChange={e => setForm(f => ({ ...f, expectedPmHead2: Number(e.target.value) }))}
-                />
-              </div>
+              {form.chargerHeads >= 2 && (
+                <div>
+                  <label className="input-label">Expected PM — Head 2</label>
+                  <input className="input" type="number" min={1} max={10}
+                    value={form.expectedPmHead2 ?? 3}
+                    onChange={e => setForm(f => ({ ...f, expectedPmHead2: Number(e.target.value) }))}
+                  />
+                </div>
+              )}
             </div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: -4 }}>
               Alert triggers when active PM count drops below the expected value per head
