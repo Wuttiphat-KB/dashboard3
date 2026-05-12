@@ -20,6 +20,7 @@ import { initPowerModuleHandler, registerPmStation } from './modules/powerModule
 import { processRouterTemp } from './modules/temperature';
 import { initFanRpmHandler } from './modules/fanRpm';
 import { initScriptHbHandlers, checkScriptTimeouts, registerStatePlcCollection } from './modules/scriptHb';
+import { checkAllAlerts } from './modules/alerts';
 import { onMessage } from './mqtt';
 import { MOCK_STATIONS } from '../lib/mockData';
 
@@ -159,6 +160,11 @@ async function main() {
     checkTimeouts();
     checkScriptTimeouts();
   }, 30_000);
+
+  // 7b. Auto-alert engine (every 60s) — temp / meter stalled / PM count / script offline
+  setInterval(() => { checkAllAlerts(); }, 60_000);
+  // Initial run after 15s (let MQTT data populate first)
+  setTimeout(() => { checkAllAlerts(); }, 15_000);
 
   // 8. Auto-reload stations every 10s — handles add / edit / delete
   setInterval(async () => {

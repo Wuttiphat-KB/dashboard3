@@ -285,17 +285,29 @@ function rssiCategory(rssi: number): RssiCategory {
   return            { label: 'Weak',      color: '#a40e26',               bg: 'rgba(248, 81, 73, 0.20)' };
 }
 
+const ROUTER_STALE_MS = 5 * 60 * 1000;
+function routerIsStale(rd: { online: boolean; lastSeen: string }): boolean {
+  if (!rd.online) return true;
+  if (!rd.lastSeen) return true;
+  const t = new Date(rd.lastSeen).getTime();
+  if (isNaN(t)) return true;
+  return Date.now() - t >= ROUTER_STALE_MS;
+}
+
 function TemperatureCard({ station, data }: { station: Station; data: StationDashboardData }) {
-  const current = data.routerData.tempRaw / 10;
-  const hasData = current > 0;
+  // No router data for ≥ 5 min → reset all derived values.
+  // Derive staleness from lastSeen so the display always matches what the user sees.
+  const isStale = routerIsStale(data.routerData);
+  const current = isStale ? 0 : data.routerData.tempRaw / 10;
+  const hasData = !isStale && current > 0;
 
   // Temperature thresholds — NOT related to online/offline
-  const isCritical = current >= 80;
-  const isWarning  = current >= 70 && current < 80;
+  const isCritical = hasData && current >= 80;
+  const isWarning  = hasData && current >= 70 && current < 80;
   const tempColor  = !hasData ? 'var(--text-muted)' : isCritical ? 'var(--error)' : isWarning ? 'var(--warn)' : 'var(--ok)';
-  const pct        = Math.min((current / 120) * 100, 100);
+  const pct        = hasData ? Math.min((current / 120) * 100, 100) : 0;
 
-  const rssi = data.routerData.rssi || 0;
+  const rssi = isStale ? 0 : (data.routerData.rssi || 0);
   const rssiCat = rssiCategory(rssi);
 
   // Card-level status from temperature, not heartbeat
@@ -493,7 +505,10 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
         timestamp1: fl.meter.timestamp1, timestamp2: fl.meter.timestamp2, timestamp: fl.meter.timestamp1,
       }] : [],
       tempHistory: [],
-      fanData: { fans: {}, timestamp: '' },
+      fanData: {
+        fans: fl.fan?.fans || {},
+        timestamp: fl.fan?.timestamp || '',
+      },
       scripts: [
         { name: 'fault_status', description: 'Fault status heartbeat', mqttTopic: '', lastHeartbeat: fl.scripts?.faultStatus.lastHeartbeat || '', online: !!fl.scripts?.faultStatus.online, expectedInterval: 30 },
         { name: 'plc',          description: 'PLC data heartbeat',     mqttTopic: '', lastHeartbeat: fl.scripts?.plc.lastHeartbeat || '',         online: !!fl.scripts?.plc.online,         expectedInterval: 30 },
@@ -546,8 +561,8 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
           return stalledB - stalledA;  // most stalled first
         }
         if (type === 'temperature') {
-          const tempA = a.data.routerData.tempRaw / 10;
-          const tempB = b.data.routerData.tempRaw / 10;
+          const tempA = routerIsStale(a.data.routerData) ? 0 : a.data.routerData.tempRaw / 10;
+          const tempB = routerIsStale(b.data.routerData) ? 0 : b.data.routerData.tempRaw / 10;
           return tempB - tempA;  // hottest first
         }
         return STATUS_ORDER[deriveStatus(a.data)] - STATUS_ORDER[deriveStatus(b.data)];
@@ -611,7 +626,7 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
       ];
     }
     if (type === 'temperature') {
-      const temps = allData.map(x => x.data.routerData.online ? x.data.routerData.tempRaw / 10 : 0);
+      const temps = allData.map(x => routerIsStale(x.data.routerData) ? 0 : x.data.routerData.tempRaw / 10);
       const max   = Math.max(...temps);
       return [
         { label: 'Avg Temp', value: `${(temps.reduce((a, b) => a + b, 0) / Math.max(temps.length, 1)).toFixed(1)} °C`, color: 'var(--text-primary)' },

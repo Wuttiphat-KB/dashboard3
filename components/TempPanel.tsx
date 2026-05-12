@@ -13,11 +13,11 @@ interface Props {
 const THRESHOLD = 80;
 
 // ── Thermometer SVG ──────────────────────────────────────────────────────────
-function Thermometer({ tempC, threshold }: { tempC: number; threshold: number }) {
+function Thermometer({ tempC, threshold, stale }: { tempC: number; threshold: number; stale?: boolean }) {
   const pct   = Math.min(Math.max((tempC / 120) * 100, 0), 100);
-  const color = tempC >= threshold ? 'var(--error)' : tempC >= threshold - 10 ? 'var(--warn)' : 'var(--ok)';
+  const color = stale ? 'var(--text-muted)' : tempC >= threshold ? 'var(--error)' : tempC >= threshold - 10 ? 'var(--warn)' : 'var(--ok)';
   const bulbH = 160;
-  const fillH = (pct / 100) * (bulbH - 30);
+  const fillH = stale ? 0 : (pct / 100) * (bulbH - 30);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
@@ -47,7 +47,7 @@ function Thermometer({ tempC, threshold }: { tempC: number; threshold: number })
         ))}
       </svg>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1 }}>{tempC.toFixed(1)}</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1 }}>{stale ? '—' : tempC.toFixed(1)}</div>
         <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>°C</div>
       </div>
     </div>
@@ -75,13 +75,26 @@ function SignalBars({ rssi }: { rssi: number }) {
   );
 }
 
+const STALE_MS = 5 * 60 * 1000;
+
+function isLastSeenStale(lastSeen: string | undefined | null): boolean {
+  if (!lastSeen) return true;
+  const t = new Date(lastSeen).getTime();
+  if (isNaN(t)) return true;
+  return Date.now() - t >= STALE_MS;
+}
+
 export default function TempPanel({ routerData, tempHistory, stationId, tempThreshold = THRESHOLD }: Props) {
-  const currentTemp = routerData.tempRaw / 10;
-  const maxTemp     = tempHistory.length ? Math.max(...tempHistory.map(r => r.value)) : 0;
-  const avgTemp     = tempHistory.length ? tempHistory.reduce((s, r) => s + r.value, 0) / tempHistory.length : 0;
-  const alertActive = currentTemp >= tempThreshold;
-  const isWarn      = currentTemp >= tempThreshold - 10;
-  const color       = alertActive ? 'var(--error)' : isWarn ? 'var(--warn)' : 'var(--ok)';
+  // No router data for ≥ 5 min → treat all router-derived values as empty.
+  // Derive from lastSeen timestamp so the display always matches the age the user sees.
+  const isStale     = !routerData.online || isLastSeenStale(routerData.lastSeen);
+  const history     = isStale ? [] : tempHistory;
+  const currentTemp = isStale ? 0 : routerData.tempRaw / 10;
+  const maxTemp     = history.length ? Math.max(...history.map(r => r.value)) : 0;
+  const avgTemp     = history.length ? history.reduce((s, r) => s + r.value, 0) / history.length : 0;
+  const alertActive = !isStale && currentTemp >= tempThreshold;
+  const isWarn      = !isStale && currentTemp >= tempThreshold - 10;
+  const color       = isStale ? 'var(--text-muted)' : alertActive ? 'var(--error)' : isWarn ? 'var(--warn)' : 'var(--ok)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -106,14 +119,14 @@ export default function TempPanel({ routerData, tempHistory, stationId, tempThre
       <div className="card">
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           {/* Thermometer */}
-          <Thermometer tempC={currentTemp} threshold={tempThreshold} />
+          <Thermometer tempC={currentTemp} threshold={tempThreshold} stale={isStale} />
 
           {/* Right column */}
           <div style={{ flex: 1, minWidth: 240 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <span className={`badge ${alertActive ? 'badge-error' : isWarn ? 'badge-warn' : 'badge-ok'}`} style={{ fontSize: 12, padding: '4px 12px' }}>
-                <span className={`led ${alertActive ? 'led-error' : isWarn ? 'led-warn led-pulse' : 'led-ok led-pulse'}`} />
-                {alertActive ? 'CRITICAL' : isWarn ? 'WARNING' : 'NORMAL'}
+              <span className={`badge ${isStale ? 'badge-offline' : alertActive ? 'badge-error' : isWarn ? 'badge-warn' : 'badge-ok'}`} style={{ fontSize: 12, padding: '4px 12px' }}>
+                <span className={`led ${isStale ? '' : alertActive ? 'led-error' : isWarn ? 'led-warn led-pulse' : 'led-ok led-pulse'}`} />
+                {isStale ? 'NO DATA' : alertActive ? 'CRITICAL' : isWarn ? 'WARNING' : 'NORMAL'}
               </span>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                 Threshold: {tempThreshold} °C → Telegram
@@ -123,10 +136,10 @@ export default function TempPanel({ routerData, tempHistory, stationId, tempThre
             {/* Temp stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 8, marginBottom: 16 }}>
               {[
-                { label: 'Current', value: `${currentTemp.toFixed(1)} °C`, color },
-                { label: 'Max 24h', value: `${maxTemp.toFixed(1)} °C`, color: maxTemp >= tempThreshold ? 'var(--error-text)' : 'var(--text-primary)' },
-                { label: 'Avg 24h', value: `${avgTemp.toFixed(1)} °C`, color: 'var(--text-secondary)' },
-                { label: 'Raw',     value: `${routerData.tempRaw}`, color: 'var(--text-muted)' },
+                { label: 'Current', value: isStale ? '—' : `${currentTemp.toFixed(1)} °C`, color },
+                { label: 'Max 24h', value: isStale ? '—' : `${maxTemp.toFixed(1)} °C`, color: !isStale && maxTemp >= tempThreshold ? 'var(--error-text)' : 'var(--text-primary)' },
+                { label: 'Avg 24h', value: isStale ? '—' : `${avgTemp.toFixed(1)} °C`, color: 'var(--text-secondary)' },
+                { label: 'Raw',     value: isStale ? '—' : `${routerData.tempRaw}`, color: 'var(--text-muted)' },
               ].map(s => (
                 <div key={s.label} style={{ background: 'var(--bg-elevated)', borderRadius: 6, padding: '8px 10px' }}>
                   <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 3 }}>{s.label}</div>
@@ -148,7 +161,7 @@ export default function TempPanel({ routerData, tempHistory, stationId, tempThre
           <span className="card-title">⊕ Router Status &amp; Signal</span>
           <span className={`badge ${routerData.online ? 'badge-ok' : 'badge-error'}`}>
             <span className={`led ${routerData.online ? 'led-ok led-pulse' : 'led-error'}`} />
-            {routerData.connstate}
+            {isStale ? 'Disconnected' : routerData.connstate}
           </span>
         </div>
 
@@ -158,12 +171,12 @@ export default function TempPanel({ routerData, tempHistory, stationId, tempThre
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>Signal Quality</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {[
-                { label: 'RSSI',     value: `${routerData.rssi} dBm`,  extra: <SignalBars rssi={routerData.rssi} /> },
-                { label: 'RSRP',     value: `${routerData.rsrp} dBm`,  extra: null },
-                { label: 'RSRQ',     value: `${routerData.rsrq} dB`,   extra: null },
-                { label: 'SINR',     value: `${routerData.sinr}`,       extra: null },
-                { label: 'Type',     value: routerData.conntype,        extra: null },
-                { label: 'Operator', value: routerData.operator,        extra: null },
+                { label: 'RSSI',     value: isStale ? '—' : `${routerData.rssi} dBm`,  extra: isStale ? null : <SignalBars rssi={routerData.rssi} /> },
+                { label: 'RSRP',     value: isStale ? '—' : `${routerData.rsrp} dBm`,  extra: null },
+                { label: 'RSRQ',     value: isStale ? '—' : `${routerData.rsrq} dB`,   extra: null },
+                { label: 'SINR',     value: isStale ? '—' : `${routerData.sinr}`,       extra: null },
+                { label: 'Type',     value: isStale ? '—' : routerData.conntype,        extra: null },
+                { label: 'Operator', value: isStale ? '—' : routerData.operator,        extra: null },
               ].map(r => (
                 <div key={r.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                   <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.label}</span>
@@ -181,11 +194,11 @@ export default function TempPanel({ routerData, tempHistory, stationId, tempThre
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>Device Info</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               {[
-                { label: 'Model',  value: routerData.model },
-                { label: 'Manuf',  value: routerData.manuf },
-                { label: 'IMEI',   value: routerData.imei },
-                { label: 'ICCID',  value: routerData.iccid },
-                { label: 'IP',     value: routerData.ip.join(', ') || '—' },
+                { label: 'Model',  value: isStale ? '—' : routerData.model },
+                { label: 'Manuf',  value: isStale ? '—' : routerData.manuf },
+                { label: 'IMEI',   value: isStale ? '—' : routerData.imei },
+                { label: 'ICCID',  value: isStale ? '—' : routerData.iccid },
+                { label: 'IP',     value: isStale ? '—' : (routerData.ip.join(', ') || '—') },
               ].map(r => (
                 <div key={r.label} style={{ padding: '4px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                   <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{r.label}</div>
@@ -204,7 +217,7 @@ export default function TempPanel({ routerData, tempHistory, stationId, tempThre
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{stationId} · 30 min interval · raw ÷ 10</span>
         </div>
         <LineChart
-          data={tempHistory}
+          data={history}
           height={180}
           color={color}
           thresholdValue={tempThreshold}

@@ -90,12 +90,13 @@ export async function GET(
         .catch(() => null),
     ]);
 
-    // Live device status + router data + script status + plc payload from backend
-    const [liveStatuses, routerLive, scriptStatuses, plcLive] = await Promise.all([
+    // Live device status + router data + script status + plc payload + fan data from backend
+    const [liveStatuses, routerLive, scriptStatuses, plcLive, fanLive] = await Promise.all([
       client.db(STATION_DB).collection('_device_status').find({ stationId: id }).toArray().catch(() => []),
       client.db(STATION_DB).collection('_router_data').findOne({ stationId: id }).catch(() => null),
       client.db(STATION_DB).collection('_script_status').find({ stationId: id }).toArray().catch(() => []),
       client.db(STATION_DB).collection('_plc_data').findOne({ stationId: id }).catch(() => null),
+      client.db(STATION_DB).collection('_fan_data').findOne({ stationId: id }).catch(() => null),
     ]);
     const liveHb = liveStatuses.find((d: any) => d.device === 'heartbeat');
     const liveRt = liveStatuses.find((d: any) => d.device === 'router');
@@ -240,6 +241,10 @@ export async function GET(
         ip:       Array.isArray(routerLive?.ip) ? routerLive.ip : [],
       },
       plcData,
+      fanData: {
+        fans: (fanLive as any)?.fans || {},
+        timestamp: tsToString((fanLive as any)?.updatedAt) || '',
+      },
       scripts: [
         {
           name: 'fault_status',

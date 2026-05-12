@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './Sidebar';
+import { useWebSocket, WsMessage } from '@/lib/hooks/useWebSocket';
+import { invalidateFleet, invalidateDashboard } from '@/lib/hooks/dataCache';
 
 const SIDEBAR_W     = 220;
 const SIDEBAR_W_COL = 52;
@@ -35,6 +37,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('ev-theme', next);
   };
+
+  // WebSocket bridge — invalidate caches when realtime events arrive
+  const onWsMessage = useCallback((msg: WsMessage) => {
+    // Data-affecting events trigger cache refresh (throttled inside dataCache)
+    const dataTypes = ['heartbeat', 'meter', 'powerModule', 'plc', 'temperature', 'fanRpm', 'scriptHb', 'alert'];
+    if (dataTypes.includes(msg.type)) {
+      invalidateFleet();
+      if (msg.stationId) invalidateDashboard(msg.stationId);
+    }
+  }, []);
+  useWebSocket(onWsMessage);
 
   // On mobile, sidebar is overlay → main content has no left margin
   const sideW = isMobile ? 0 : (collapsed ? SIDEBAR_W_COL : SIDEBAR_W);

@@ -37,12 +37,13 @@ export async function GET() {
       }
     }
 
-    // 2. Load live device status + router data + script status + plc data from backend
-    const [liveStatuses, routerDataDocs, scriptStatuses, plcDataDocs] = await Promise.all([
+    // 2. Load live device status + router data + script status + plc data + fan data
+    const [liveStatuses, routerDataDocs, scriptStatuses, plcDataDocs, fanDataDocs] = await Promise.all([
       client!.db(STATION_DB).collection('_device_status').find().toArray().catch(() => []),
       client!.db(STATION_DB).collection('_router_data').find().toArray().catch(() => []),
       client!.db(STATION_DB).collection('_script_status').find().toArray().catch(() => []),
       client!.db(STATION_DB).collection('_plc_data').find().toArray().catch(() => []),
+      client!.db(STATION_DB).collection('_fan_data').find().toArray().catch(() => []),
     ]);
 
     // 3. For each station, fetch summary data
@@ -149,6 +150,13 @@ export async function GET() {
       // Router data (temp, rssi, etc.) from backend cache
       const routerData = routerDataDocs.find((d: any) => d.stationId === st.id);
 
+      // Fan data — latest snapshot from backend cache
+      const fanDoc = fanDataDocs.find((d: any) => d.stationId === st.id);
+      const fans = fanDoc?.fans || {};
+      const fanTimestamp = fanDoc?.updatedAt
+        ? (fanDoc.updatedAt instanceof Date ? fanDoc.updatedAt.toISOString() : String(fanDoc.updatedAt))
+        : '';
+
       // Script status from backend cache
       const stScripts = scriptStatuses.filter((s: any) => s.stationId === st.id);
       const scriptFault = stScripts.find((s: any) => s.script === 'fault_status');
@@ -195,6 +203,10 @@ export async function GET() {
           timestamp2: mp.timestamp2 || '',
           stalled1,
           stalled2,
+        },
+        fan: {
+          fans,                          // { "FAN 1": 4507.99, "FAN 2": ..., ... }
+          timestamp: fanTimestamp,
         },
         powerModule: [1, 2].map(h => pmHeads[h] || { head: h, pmCount: 0, voltage: 0, current: 0, powerKw: 0, timestamp: '', online: false }),
         plcHeads,

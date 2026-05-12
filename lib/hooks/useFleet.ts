@@ -34,6 +34,10 @@ export interface FleetStation {
     stalled1: boolean;
     stalled2: boolean;
   };
+  fan?: {
+    fans: Record<string, number>;
+    timestamp: string;
+  };
   powerModule: {
     head: number;
     pmCount: number;
@@ -66,8 +70,9 @@ export function useFleet() {
     const c = getFleet();  // Trigger initial fetch
     const unsub = subscribe(c, () => forceUpdate(n => n + 1));
 
-    // Periodic refresh while mounted
-    const timer = setInterval(() => { getFleet(); }, 5000);
+    // Background refresh — WS pushes invalidate cache instantly,
+    // this is a safety net in case WS disconnects
+    const timer = setInterval(() => { getFleet(); }, 30_000);
 
     return () => {
       unsub();

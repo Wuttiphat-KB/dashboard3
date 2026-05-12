@@ -54,6 +54,42 @@ async function fetchAndCache<T>(c: CacheEntry<T>, url: string): Promise<T> {
   return c.promise;
 }
 
+// ── Invalidation API (called by WebSocket listener for realtime updates) ──
+// Throttled to avoid stampeding the API on burst MQTT traffic
+const INVALIDATE_THROTTLE_MS = 1500;
+const lastInvalidate: { fleet: number; stations: number; dashboard: Map<string, number> } = {
+  fleet: 0,
+  stations: 0,
+  dashboard: new Map(),
+};
+
+export function invalidateFleet(): void {
+  const now = Date.now();
+  if (now - lastInvalidate.fleet < INVALIDATE_THROTTLE_MS) return;
+  lastInvalidate.fleet = now;
+  fleetCache.timestamp = 0;
+  fetchAndCache<FleetStation[]>(fleetCache, '/api/fleet').catch(() => {});
+}
+
+export function invalidateDashboard(stationId: string): void {
+  const now = Date.now();
+  const prev = lastInvalidate.dashboard.get(stationId) || 0;
+  if (now - prev < INVALIDATE_THROTTLE_MS) return;
+  lastInvalidate.dashboard.set(stationId, now);
+  const c = dashboardCache.get(stationId);
+  if (!c) return;
+  c.timestamp = 0;
+  fetchAndCache<any>(c, `/api/dashboard/${stationId}`).catch(() => {});
+}
+
+export function invalidateStations(): void {
+  const now = Date.now();
+  if (now - lastInvalidate.stations < INVALIDATE_THROTTLE_MS) return;
+  lastInvalidate.stations = now;
+  stationsCache.timestamp = 0;
+  fetchAndCache<Station[]>(stationsCache, '/api/stations').catch(() => {});
+}
+
 /** Get cached data; trigger fetch if stale or missing */
 export function getStations() {
   const c = stationsCache;

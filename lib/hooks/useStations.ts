@@ -39,7 +39,7 @@ export function useDashboard(stationId: string) {
   useEffect(() => {
     const c = getDashboard(stationId);
     const unsub = subscribe(c, () => forceUpdate(n => n + 1));
-    const timer = setInterval(() => { getDashboard(stationId); }, 5000);
+    const timer = setInterval(() => { getDashboard(stationId); }, 30_000);
     return () => { unsub(); clearInterval(timer); };
   }, [stationId]);
 
@@ -98,7 +98,10 @@ function mapApiToDashboard(stationId: string, raw: any): StationDashboardData {
     online:    !!r.online,
   };
 
-  const fanData: FanSnapshot = { fans: {}, timestamp: new Date().toISOString() };
+  const fanData: FanSnapshot = {
+    fans: raw.fanData?.fans || {},
+    timestamp: raw.fanData?.timestamp || '',
+  };
 
   const scripts: MqttScript[] = (raw.scripts || []).length > 0
     ? raw.scripts.map((s: any) => ({
