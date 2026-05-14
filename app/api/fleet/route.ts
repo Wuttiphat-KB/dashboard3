@@ -1,8 +1,58 @@
 import { NextResponse } from 'next/server';
+import { MongoClient } from 'mongodb';
 import { getMongoClient } from '@/lib/mongoClient';
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
+
+// MongoDB on this deployment has ~230 collections in Station DB, one per station.
+// listCollections() + findOne()-per-collection takes ~14s end-to-end, which is the
+// primary reason /api/fleet was timing out at 30s. Cache the loaded station list
+// for 60s so subsequent requests skip that whole loop.
+const STATION_CACHE_MS = 60_000;
+const FINDONE_CONCURRENCY = 20;
+let cachedStations: any[] | null = null;
+let cachedStationsAt = 0;
+let cachedStationsPromise: Promise<any[]> | null = null;
+
+async function loadStations(client: MongoClient): Promise<any[]> {
+  const now = Date.now();
+  if (cachedStations && now - cachedStationsAt < STATION_CACHE_MS) {
+    return cachedStations;
+  }
+  if (cachedStationsPromise) return cachedStationsPromise;
+
+  cachedStationsPromise = (async () => {
+    const stDb = client.db(STATION_DB);
+    const cols = await stDb.listCollections().toArray();
+    const targets = cols.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
+
+    // Parallel findOne with bounded concurrency — much faster than serial loop
+    const out: any[] = [];
+    const seenIds = new Set<string>();
+    for (let i = 0; i < targets.length; i += FINDONE_CONCURRENCY) {
+      const batch = targets.slice(i, i + FINDONE_CONCURRENCY);
+      const docs = await Promise.all(
+        batch.map(col => stDb.collection(col.name).findOne().catch(() => null)),
+      );
+      for (const doc of docs) {
+        if (doc && doc.id && !seenIds.has(doc.id)) {
+          seenIds.add(doc.id);
+          out.push(doc);
+        }
+      }
+    }
+    cachedStations = out;
+    cachedStationsAt = Date.now();
+    return out;
+  })();
+
+  try {
+    return await cachedStationsPromise;
+  } finally {
+    cachedStationsPromise = null;
+  }
+}
 
 const DATA_DBS = {
   heartbeat:   'Heartbeat',
@@ -26,24 +76,11 @@ export async function GET() {
     const client = await getMongoClient();
     mark('connect', tConn);
 
-    // 1. Load all station configs (skip internal cache collections + dedupe by id)
+    // 1. Load all station configs (cached ~60s — see loadStations)
     const tCfg = Date.now();
-    const stDb = client.db(STATION_DB);
-    const cols = await stDb.listCollections().toArray();
-    mark('listCollections', tCfg);
-
-    const tFindStations = Date.now();
-    const stations: any[] = [];
-    const seenIds = new Set<string>();
-    for (const col of cols) {
-      if (col.name.startsWith('system.') || col.name.startsWith('_')) continue;
-      const doc = await stDb.collection(col.name).findOne();
-      if (doc && doc.id && !seenIds.has(doc.id)) {
-        seenIds.add(doc.id);
-        stations.push(doc);
-      }
-    }
-    mark(`findStations[${stations.length}/${cols.length}]`, tFindStations);
+    const fromCache = cachedStations && Date.now() - cachedStationsAt < STATION_CACHE_MS;
+    const stations = await loadStations(client);
+    mark(fromCache ? `stationsCached[${stations.length}]` : `stationsLoaded[${stations.length}]`, tCfg);
 
     // 2. Load live device status + router data + script status + plc data + fan data
     const tCaches = Date.now();

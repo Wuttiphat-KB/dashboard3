@@ -25,18 +25,25 @@ function buildClient(): MongoClient {
 }
 
 export async function getMongoClient(): Promise<MongoClient> {
+  if (g.__mongoClient) return g.__mongoClient;
   if (g.__mongoClientPromise) return g.__mongoClientPromise;
   const client = buildClient();
-  g.__mongoClientPromise = client.connect();
-  try {
-    await g.__mongoClientPromise;
-    g.__mongoClient = client;
-    return client;
-  } catch (err) {
-    // Allow a retry on next call
-    g.__mongoClientPromise = null;
-    throw err;
-  }
+  const masked = MONGO_URI.replace(/\/\/([^:]+):([^@]+)@/, '//$1:***@');
+  console.log(`[mongo] connecting to ${masked} ...`);
+  const tStart = Date.now();
+  g.__mongoClientPromise = (async () => {
+    try {
+      await client.connect();
+      g.__mongoClient = client;
+      console.log(`[mongo] connected in ${Date.now() - tStart}ms`);
+      return client;
+    } catch (err: any) {
+      console.error(`[mongo] connection failed after ${Date.now() - tStart}ms:`, err?.message || err);
+      g.__mongoClientPromise = null;
+      throw err;
+    }
+  })();
+  return g.__mongoClientPromise;
 }
 
 export async function getMongoDb(): Promise<Db> {

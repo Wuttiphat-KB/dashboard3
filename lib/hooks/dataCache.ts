@@ -34,6 +34,9 @@ function notify<T>(c: CacheEntry<T>) {
 }
 
 async function fetchAndCache<T>(c: CacheEntry<T>, url: string): Promise<T> {
+  // Skip during SSR — fetch with relative URL has no base on the server, and we
+  // don't want to call our own API from inside Next.js at render time anyway.
+  if (typeof window === 'undefined') return c.data as T;
   if (c.promise) return c.promise;
   c.loading = true;
   c.error = null;
