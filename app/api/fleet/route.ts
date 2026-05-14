@@ -17,12 +17,22 @@ const DATA_DBS = {
  * Returns stations + summary dashboard data for every station in one call.
  */
 export async function GET() {
+  const t0 = Date.now();
+  const phase: Record<string, number> = {};
+  const mark = (name: string, since: number) => { phase[name] = Date.now() - since; };
+
   try {
+    const tConn = Date.now();
     const client = await getMongoClient();
+    mark('connect', tConn);
 
     // 1. Load all station configs (skip internal cache collections + dedupe by id)
+    const tCfg = Date.now();
     const stDb = client.db(STATION_DB);
     const cols = await stDb.listCollections().toArray();
+    mark('listCollections', tCfg);
+
+    const tFindStations = Date.now();
     const stations: any[] = [];
     const seenIds = new Set<string>();
     for (const col of cols) {
@@ -33,8 +43,10 @@ export async function GET() {
         stations.push(doc);
       }
     }
+    mark(`findStations[${stations.length}/${cols.length}]`, tFindStations);
 
     // 2. Load live device status + router data + script status + plc data + fan data
+    const tCaches = Date.now();
     const [liveStatuses, routerDataDocs, scriptStatuses, plcDataDocs, fanDataDocs] = await Promise.all([
       client!.db(STATION_DB).collection('_device_status').find().toArray().catch(() => []),
       client!.db(STATION_DB).collection('_router_data').find().toArray().catch(() => []),
@@ -42,8 +54,10 @@ export async function GET() {
       client!.db(STATION_DB).collection('_plc_data').find().toArray().catch(() => []),
       client!.db(STATION_DB).collection('_fan_data').find().toArray().catch(() => []),
     ]);
+    mark('loadCaches', tCaches);
 
     // 3. For each station, fetch summary data
+    const tPerStation = Date.now();
     const now = Date.now();
     const results = await Promise.all(stations.map(async (st) => {
       // Per-database collection name (each db may use a different collection per station)
@@ -214,9 +228,15 @@ export async function GET() {
       };
     }));
 
+    mark('perStation', tPerStation);
+    const total = Date.now() - t0;
+    const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
+    console.log(`[api/fleet] ${summary} total=${total}ms stations=${results.length}`);
     return NextResponse.json(results);
   } catch (err: any) {
-    console.error('[api/fleet] error:', err?.message || err);
+    const total = Date.now() - t0;
+    const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
+    console.error(`[api/fleet] FAILED after ${total}ms ${summary} error:`, err?.message || err);
     return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
   }
   // No client.close() — connection pool is shared and reused across requests.
