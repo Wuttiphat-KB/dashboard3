@@ -24,10 +24,24 @@ async function loadStations(client: MongoClient): Promise<any[]> {
 
   cachedStationsPromise = (async () => {
     const stDb = client.db(STATION_DB);
+
+    // FAST PATH: backend mirrors all station configs to `_stations` every reload.
+    // Read from there — one query instead of 230 findOne()s.
+    try {
+      const docs = await stDb.collection('_stations').find().toArray();
+      if (docs.length > 0) {
+        cachedStations = docs;
+        cachedStationsAt = Date.now();
+        return docs;
+      }
+    } catch {
+      // fall through to slow scan
+    }
+
+    // SLOW FALLBACK: scan per-station collections. Only used until backend has
+    // populated _stations for the first time.
     const cols = await stDb.listCollections().toArray();
     const targets = cols.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
-
-    // Parallel findOne with bounded concurrency — much faster than serial loop
     const out: any[] = [];
     const seenIds = new Set<string>();
     for (let i = 0; i < targets.length; i += FINDONE_CONCURRENCY) {

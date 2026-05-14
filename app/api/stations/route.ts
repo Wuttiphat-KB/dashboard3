@@ -21,9 +21,22 @@ async function loadStations(client: MongoClient): Promise<any[]> {
 
   cachedStationsPromise = (async () => {
     const db = client.db(STATION_DB);
+
+    // FAST PATH: read from _stations mirror populated by the backend
+    try {
+      const docs = await db.collection('_stations').find().toArray();
+      if (docs.length > 0) {
+        cachedStations = docs;
+        cachedStationsAt = Date.now();
+        return docs;
+      }
+    } catch {
+      // fall through to slow scan
+    }
+
+    // SLOW FALLBACK: scan per-station collections
     const cols = await db.listCollections().toArray();
     const targets = cols.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
-
     const out: any[] = [];
     const seenIds = new Set<string>();
     for (let i = 0; i < targets.length; i += FINDONE_CONCURRENCY) {

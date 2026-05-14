@@ -23,16 +23,22 @@ export async function GET(
     const client = await getMongoClient();
 
     // 1. Find station config from db=Station
+    // FAST PATH: backend mirrors all configs to _stations, single index-friendly query.
     const stationDb = client.db(STATION_DB);
-    const allCols = await stationDb.listCollections().toArray();
-    let stationConfig: any = null;
+    let stationConfig: any = await stationDb.collection('_stations').findOne({
+      $or: [{ id }, { name: id }],
+    }).catch(() => null);
 
-    for (const col of allCols) {
-      if (col.name.startsWith('system.')) continue;
-      const doc = await stationDb.collection(col.name).findOne({
-        $or: [{ id }, { name: id }],
-      });
-      if (doc) { stationConfig = doc; break; }
+    // SLOW FALLBACK: scan per-station collections (only if backend hasn't populated _stations yet)
+    if (!stationConfig) {
+      const allCols = await stationDb.listCollections().toArray();
+      for (const col of allCols) {
+        if (col.name.startsWith('system.') || col.name.startsWith('_')) continue;
+        const doc = await stationDb.collection(col.name).findOne({
+          $or: [{ id }, { name: id }],
+        });
+        if (doc) { stationConfig = doc; break; }
+      }
     }
 
     if (!stationConfig) {

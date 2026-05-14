@@ -18,9 +18,11 @@ const g = globalThis as any;
 function buildClient(): MongoClient {
   return new MongoClient(MONGO_URI, {
     serverSelectionTimeoutMS: 8_000,
-    // Allow many concurrent ops — /api/fleet fans out ~5 queries × ~200 stations.
-    maxPoolSize: 50,
-    minPoolSize: 5,
+    // /api/fleet fans out ~4 queries × ~200 stations = 800 concurrent ops.
+    // With a 50-slot pool that's 16 sequential rounds on an already-slow Mongo.
+    // 200 lets them all run in parallel.
+    maxPoolSize: 200,
+    minPoolSize: 10,
   });
 }
 

@@ -44,11 +44,10 @@ async function fetchAndCache<T>(c: CacheEntry<T>, url: string): Promise<T> {
 
   c.promise = (async () => {
     try {
-      // 30s client timeout — anything slower than that almost certainly means
-      // the API is blocked on a slow MongoDB query and we want the UI to surface
-      // an error instead of spinning forever.
+      // 60s client timeout — the deployment Mongo is slow on first-load; cached
+      // requests come back in <1s but the initial cold fetch can take 30-60s.
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
+      const timeout = setTimeout(() => controller.abort(), 60_000);
       let res: Response;
       try {
         res = await fetch(url, { signal: controller.signal });
@@ -69,7 +68,7 @@ async function fetchAndCache<T>(c: CacheEntry<T>, url: string): Promise<T> {
       c.error = null;
       return data as T;
     } catch (err: any) {
-      const msg = err?.name === 'AbortError' ? 'request timed out after 30s' : (err?.message || String(err));
+      const msg = err?.name === 'AbortError' ? 'request timed out after 60s' : (err?.message || String(err));
       c.error = `${url}: ${msg}`;
       console.error('[dataCache]', c.error);
       throw err;
