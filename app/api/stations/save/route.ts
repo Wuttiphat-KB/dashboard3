@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
 import { cookies } from 'next/headers';
-import { MONGO_URI } from '@/lib/env';
+import { getMongoClient } from '@/lib/mongoClient';
 
 const STATION_DB = 'Station';
 const COOKIE_NAME = 'cfg_pin';
@@ -31,8 +30,7 @@ export async function POST(req: NextRequest) {
     // Strip MongoDB-managed fields — these can't be in $set
     const { _id, ...stationData } = station;
 
-    const client = new MongoClient(MONGO_URI);
-    await client.connect();
+    const client = await getMongoClient();
 
     const db = client.db(STATION_DB);
     const collectionName = station.name;
@@ -43,8 +41,6 @@ export async function POST(req: NextRequest) {
       { $set: { ...stationData, updatedAt: new Date() } },
       { upsert: true },
     );
-
-    await client.close();
 
     return NextResponse.json({ ok: true, db: STATION_DB, collection: collectionName });
   } catch (err: any) {

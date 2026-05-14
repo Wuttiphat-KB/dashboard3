@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
-import { MONGO_URI } from '@/lib/env';
+import { getMongoClient } from '@/lib/mongoClient';
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
@@ -18,10 +17,8 @@ const DATA_DBS = {
  * Returns stations + summary dashboard data for every station in one call.
  */
 export async function GET() {
-  let client: MongoClient | null = null;
   try {
-    client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 8000 });
-    await client.connect();
+    const client = await getMongoClient();
 
     // 1. Load all station configs (skip internal cache collections + dedupe by id)
     const stDb = client.db(STATION_DB);
@@ -219,8 +216,8 @@ export async function GET() {
 
     return NextResponse.json(results);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  } finally {
-    if (client) await client.close();
+    console.error('[api/fleet] error:', err?.message || err);
+    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
   }
+  // No client.close() — connection pool is shared and reused across requests.
 }

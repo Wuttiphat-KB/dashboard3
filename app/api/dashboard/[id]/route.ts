@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
-import { MONGO_URI } from '@/lib/env';
+import { getMongoClient } from '@/lib/mongoClient';
 
 const STATION_DB = 'Station';
 
@@ -20,10 +19,8 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  let client: MongoClient | null = null;
   try {
-    client = new MongoClient(MONGO_URI, { serverSelectionTimeoutMS: 5000 });
-    await client.connect();
+    const client = await getMongoClient();
 
     // 1. Find station config from db=Station
     const stationDb = client.db(STATION_DB);
@@ -266,8 +263,8 @@ export async function GET(
       alerts,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  } finally {
-    if (client) await client.close();
+    console.error('[api/dashboard] error:', err?.message || err);
+    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
   }
+  // No client.close() — connection pool is shared and reused across requests.
 }

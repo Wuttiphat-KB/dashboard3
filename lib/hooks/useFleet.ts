@@ -84,6 +84,6 @@ export function useFleet() {
   return {
     fleet: c.data || [],
     loading: c.loading && !c.data,  // only show loading if NO data yet
-    error: null as string | null,
+    error: c.error,
   };
 }

@@ -11,6 +11,7 @@ interface CacheEntry<T> {
   data: T | null;
   timestamp: number;
   loading: boolean;
+  error: string | null;
   promise: Promise<T> | null;
   subscribers: Set<() => void>;
 }
@@ -18,7 +19,7 @@ interface CacheEntry<T> {
 const STALE_MS = 10_000;  // Background refresh after 10s
 
 function makeCache<T>(): CacheEntry<T> {
-  return { data: null, timestamp: 0, loading: false, promise: null, subscribers: new Set() };
+  return { data: null, timestamp: 0, loading: false, error: null, promise: null, subscribers: new Set() };
 }
 
 const stationsCache = makeCache<Station[]>();
@@ -35,16 +36,40 @@ function notify<T>(c: CacheEntry<T>) {
 async function fetchAndCache<T>(c: CacheEntry<T>, url: string): Promise<T> {
   if (c.promise) return c.promise;
   c.loading = true;
+  c.error = null;
   notify(c);
 
   c.promise = (async () => {
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`API ${res.status}`);
+      // 30s client timeout — anything slower than that almost certainly means
+      // the API is blocked on a slow MongoDB query and we want the UI to surface
+      // an error instead of spinning forever.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
+      let res: Response;
+      try {
+        res = await fetch(url, { signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+      if (!res.ok) {
+        let detail = '';
+        try {
+          const body = await res.json();
+          detail = body?.error ? ` — ${body.error}` : '';
+        } catch {}
+        throw new Error(`API ${res.status}${detail}`);
+      }
       const data = await res.json();
       c.data = data;
       c.timestamp = Date.now();
+      c.error = null;
       return data as T;
+    } catch (err: any) {
+      const msg = err?.name === 'AbortError' ? 'request timed out after 30s' : (err?.message || String(err));
+      c.error = `${url}: ${msg}`;
+      console.error('[dataCache]', c.error);
+      throw err;
     } finally {
       c.loading = false;
       c.promise = null;

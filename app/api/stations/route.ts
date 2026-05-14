@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
-import { MONGO_URI } from '@/lib/env';
+import { getMongoClient } from '@/lib/mongoClient';
 
 const STATION_DB = 'Station';
 
@@ -12,8 +11,7 @@ const STATION_DB = 'Station';
  */
 export async function GET() {
   try {
-    const client = new MongoClient(MONGO_URI);
-    await client.connect();
+    const client = await getMongoClient();
 
     const db = client.db(STATION_DB);
     const collections = await db.listCollections().toArray();
@@ -30,9 +28,9 @@ export async function GET() {
       }
     }
 
-    await client.close();
     return NextResponse.json(stations);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[api/stations] error:', err?.message || err);
+    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
   }
 }
