@@ -10,7 +10,7 @@
  */
 
 import { ENV } from './config';
-import { connectMongo, getStationDb } from './mongo';
+import { connectMongo, getStationDb, getDbByName } from './mongo';
 import { connectMqtt, registerStation, unregisterStation } from './mqtt';
 import { startWs } from './ws';
 import { initHeartbeatHandlers, registerHeartbeatStation, checkTimeouts } from './modules/heartbeat';
@@ -138,6 +138,100 @@ async function syncStationsMeta(stations: StationConfig[]): Promise<void> {
   }
 }
 
+/**
+ * One-shot seed of `_pm_data` and `_meter_latest` from per-station data
+ * collections. Without this, after a backend restart the caches sit empty until
+ * each station happens to broadcast — and some stations only send PM1 / PM2
+ * every few hours, so the dashboard would show "modules missing" for a long
+ * time even though the data is right there in Mongo.
+ *
+ * Runs in the background (fire-and-forget) so it doesn't delay startup.
+ */
+const SEED_CONCURRENCY = 10;
+async function seedPmAndMeterCaches(stations: StationConfig[]): Promise<void> {
+  const tStart = Date.now();
+  const stDb = getStationDb();
+  const pmDb = getDbByName('PowerModule');
+  const meterDb = getDbByName('meter');
+  let pmSeeded = 0;
+  let meterSeeded = 0;
+
+  for (let i = 0; i < stations.length; i += SEED_CONCURRENCY) {
+    const batch = stations.slice(i, i + SEED_CONCURRENCY);
+    await Promise.all(batch.map(async (st) => {
+      const colPm    = st.mongoCollections?.powerModule || st.name;
+      const colMeter = st.mongoCollections?.meter       || st.name;
+
+      // ── Power Module: latest doc that has PM1 + latest that has PM2 ──
+      try {
+        const [pm1Doc, pm2Doc] = await Promise.all([
+          pmDb.collection(colPm).findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null),
+          pmDb.collection(colPm).findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null),
+        ]);
+        const set: any = { stationId: st.id, updatedAt: new Date() };
+        for (const [h, doc] of [[1, pm1Doc], [2, pm2Doc]] as const) {
+          if (!doc) continue;
+          const p: any = (doc as any).payload || {};
+          set[`head${h}`] = {
+            pmCount:     Number(p[`PM${h}`]) || 0,
+            voltage:     Number(p[`Voltage${h}`]) || 0,
+            current:     Number(p[`Current${h}`]) || 0,
+            powerKw:     (Number(p[`Power${h}`]) || 0) / 1000,
+            prevVoltage: Number(p[`Prevoltage${h}`]) || 0,
+            prevCurrent: Number(p[`Precurrent${h}`]) || 0,
+            timestamp:   p[`timestamp${h}`] || p.timestamp || '',
+          };
+        }
+        // Only write if at least one head was found — and DON'T overwrite a
+        // newer live cache entry that may have arrived via MQTT while seeding.
+        if (set.head1 || set.head2) {
+          const existing = await stDb.collection('_pm_data').findOne({ stationId: st.id }).catch(() => null);
+          const merged: any = { stationId: st.id, updatedAt: new Date() };
+          for (const h of [1, 2] as const) {
+            merged[`head${h}`] = (existing as any)?.[`head${h}`] ?? set[`head${h}`];
+          }
+          await stDb.collection('_pm_data').updateOne(
+            { stationId: st.id },
+            { $set: merged },
+            { upsert: true },
+          );
+          pmSeeded++;
+        }
+      } catch {}
+
+      // ── Meter: latest doc ──
+      try {
+        const mDoc = await meterDb.collection(colMeter).findOne({}, { sort: { _id: -1 } }).catch(() => null);
+        if (mDoc) {
+          const p: any = (mDoc as any).payload || {};
+          const existing = await stDb.collection('_meter_latest').findOne({ stationId: st.id }).catch(() => null);
+          // MQTT-fed cache wins if it already exists (it's newer than seed).
+          if (!existing) {
+            await stDb.collection('_meter_latest').updateOne(
+              { stationId: st.id },
+              {
+                $set: {
+                  stationId: st.id,
+                  meter1:     Number(p.meter1 ?? 0),
+                  meter2:     Number(p.meter2 ?? 0),
+                  timestamp1: p.timestamp1 || '',
+                  timestamp2: p.timestamp2 || '',
+                  timestamp:  p.timestamp || '',
+                  updatedAt:  new Date(),
+                },
+              },
+              { upsert: true },
+            );
+            meterSeeded++;
+          }
+        }
+      } catch {}
+    }));
+  }
+
+  console.log(`[init] seeded caches in ${Date.now() - tStart}ms — _pm_data:${pmSeeded} _meter_latest:${meterSeeded}`);
+}
+
 function registerStationConfig(station: StationConfig): void {
   const { mqttTopics, mongoCollections } = station;
 
@@ -220,7 +314,13 @@ async function main() {
   // Mirror to _stations so the Next.js API can avoid the slow per-collection scan
   await syncStationsMeta(stations);
 
-  console.log(`\n[init] ${stations.length} stations registered\n`);
+  // Fire-and-forget — populate _pm_data and _meter_latest in the background
+  // so the dashboard has values even before MQTT messages arrive for each head.
+  seedPmAndMeterCaches(stations).catch(err =>
+    console.error('[init] seedPmAndMeterCaches failed:', err?.message || err),
+  );
+
+  console.log(`\n[init] ${stations.length} stations registered (seeding caches in background)\n`);
 
   // 7. Timeout checker (every 30s)
   setInterval(() => {
