@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getMongoClient } from '@/lib/mongoClient';
+import { invalidateFleetCache } from '@/lib/fleetCache';
 
 const STATION_DB = 'Station';
 const COOKIE_NAME = 'cfg_pin';
@@ -41,6 +42,19 @@ export async function POST(req: NextRequest) {
       { $set: { ...stationData, updatedAt: new Date() } },
       { upsert: true },
     );
+
+    // Also write to `_stations` mirror so the new/edited station shows up in
+    // /api/fleet and in the backend's auto-reload immediately, without waiting
+    // for the next 60s syncStationsMeta tick.
+    await db.collection('_stations').updateOne(
+      { id: station.id },
+      { $set: { ...stationData, syncedAt: new Date() } },
+      { upsert: true },
+    );
+
+    // Invalidate /api/fleet's in-memory cache so the next request reloads
+    // the station list and returns the new/edited station.
+    invalidateFleetCache();
 
     return NextResponse.json({ ok: true, db: STATION_DB, collection: collectionName });
   } catch (err: any) {

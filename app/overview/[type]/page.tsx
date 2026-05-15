@@ -399,6 +399,31 @@ function FanRPMCard({ station, data }: { station: Station; data: StationDashboar
         ))}
       </div>
 
+      {/* Router temp + fan brand row */}
+      {(() => {
+        const stale = routerIsStale(data.routerData);
+        const tempC = stale ? null : data.routerData.tempRaw / 10;
+        const tempColor = tempC == null
+          ? 'var(--text-muted)'
+          : tempC >= 80 ? 'var(--error-text)'
+          : tempC >= 70 ? 'var(--warn-text)'
+          : 'var(--ok-text)';
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 8, padding: '6px 8px', background: 'var(--bg-elevated)', borderRadius: 6,
+            marginBottom: 4,
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {station.fanBrand || 'EBM'} · Router
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: tempColor, fontFamily: 'monospace' }}>
+              {tempC == null ? '—' : `${tempC.toFixed(1)} °C`}
+            </span>
+          </div>
+        );
+      })()}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {entries.map(([name, rpm]) => {
           const pct  = Math.min((rpm / FAN_MAX) * 100, 100);
@@ -581,13 +606,25 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
     };
   })();
 
+  // Color helper for "X/Y online" style stats:
+  //   100%       → green
+  //   ≥80%       → yellow
+  //   <80%       → red
+  const ratioColor = (n: number, total: number) => {
+    if (total === 0) return 'var(--text-muted)';
+    if (n === total) return 'var(--ok-text)';
+    const pct = n / total;
+    if (pct >= 0.80) return 'var(--warn-text)';
+    return 'var(--error-text)';
+  };
+
   // Summary stats per type (computed from all data, not filtered)
   const stats = (() => {
     if (type === 'heartbeat') {
       return [
-        { label: 'OCPP Device Online', value: `${hbFleet.mainOnline}/${hbFleet.mainTotal}`,     color: hbFleet.mainOnline   === hbFleet.mainTotal   ? 'var(--ok)' : 'var(--error)' },
-        { label: 'Pi5 Online',         value: `${hbFleet.pi5Online}/${hbFleet.pi5Total}`,       color: hbFleet.pi5Online    === hbFleet.pi5Total    ? 'var(--ok)' : 'var(--error)' },
-        { label: 'Router Online',      value: `${hbFleet.routerOnline}/${hbFleet.routerTotal}`, color: hbFleet.routerOnline === hbFleet.routerTotal ? 'var(--ok)' : 'var(--error)' },
+        { label: 'OCPP Device Online', value: `${hbFleet.mainOnline}/${hbFleet.mainTotal}`,     color: ratioColor(hbFleet.mainOnline,   hbFleet.mainTotal) },
+        { label: 'Pi5 Online',         value: `${hbFleet.pi5Online}/${hbFleet.pi5Total}`,       color: ratioColor(hbFleet.pi5Online,    hbFleet.pi5Total) },
+        { label: 'Router Online',      value: `${hbFleet.routerOnline}/${hbFleet.routerTotal}`, color: ratioColor(hbFleet.routerOnline, hbFleet.routerTotal) },
       ];
     }
     if (type === 'powermodule') {
@@ -595,22 +632,34 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
         head === 1 ? (st.expectedPmHead1 ?? st.expectedPmPerHead)
                    : (st.expectedPmHead2 ?? st.expectedPmPerHead);
 
-      const normalSt = allData.filter(x =>
-        x.data.powerModuleHeads.some(h => h.online) &&
-        x.data.powerModuleHeads.filter(h => h.online).every(h => h.pmCount >= expFor(x.station, h.head))
-      ).length;
-      const offlinePmCount = allData.reduce((total, x) => {
-        return total + x.data.powerModuleHeads.reduce((sum, h) => {
+      // A station is "normal" when EVERY head expected to have PMs is actually
+      // reporting at least the expected count. Matches the FULL/INCOMPLETE
+      // badge logic used in PowerModuleCard so the headline number and the
+      // card states can't disagree.
+      const normalSt = allData.filter(x => {
+        const numHeads = x.station.chargerHeads || 2;
+        const heads = x.data.powerModuleHeads.filter(h => h.head <= numHeads);
+        return heads.every(h => {
           const exp = expFor(x.station, h.head);
-          if (!h.online) return sum + exp;
-          return sum + Math.max(0, exp - h.pmCount);
-        }, 0);
+          return exp > 0 && h.pmCount >= exp;
+        });
+      }).length;
+
+      const offlinePmCount = allData.reduce((total, x) => {
+        const numHeads = x.station.chargerHeads || 2;
+        return total + x.data.powerModuleHeads
+          .filter(h => h.head <= numHeads)
+          .reduce((sum, h) => {
+            const exp = expFor(x.station, h.head);
+            if (!h.online) return sum + exp;
+            return sum + Math.max(0, exp - h.pmCount);
+          }, 0);
       }, 0);
       const offlineSt = allData.filter(x => x.data.powerModuleHeads.every(h => !h.online)).length;
       return [
-        { label: 'Normal Stations',      value: `${normalSt}/${allData.length}`, color: normalSt === allData.length - offlineSt ? 'var(--ok)' : 'var(--warn)' },
-        { label: 'Offline Power Module', value: offlinePmCount,                  color: offlinePmCount > 0 ? 'var(--error)' : 'var(--text-muted)' },
-        { label: 'Station Offline',      value: offlineSt,                       color: offlineSt > 0 ? 'var(--error)' : 'var(--text-muted)' },
+        { label: 'Normal Stations',      value: `${normalSt}/${allData.length}`, color: ratioColor(normalSt, allData.length) },
+        { label: 'Offline Power Module', value: offlinePmCount,                  color: offlinePmCount > 0 ? 'var(--error-text)' : 'var(--text-muted)' },
+        { label: 'Station Offline',      value: offlineSt,                       color: offlineSt > 0 ? 'var(--error-text)' : 'var(--text-muted)' },
       ];
     }
     if (type === 'meter') {

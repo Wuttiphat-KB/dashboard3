@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { getMongoClient } from '@/lib/mongoClient';
+import { getFleetCache } from '@/lib/fleetCache';
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
@@ -11,18 +12,16 @@ const HB_TIMEOUT = 300_000; // 5 min
 // for 60s so subsequent requests skip that whole loop.
 const STATION_CACHE_MS = 60_000;
 const FINDONE_CONCURRENCY = 20;
-let cachedStations: any[] | null = null;
-let cachedStationsAt = 0;
-let cachedStationsPromise: Promise<any[]> | null = null;
 
 async function loadStations(client: MongoClient): Promise<any[]> {
+  const cache = getFleetCache();
   const now = Date.now();
-  if (cachedStations && now - cachedStationsAt < STATION_CACHE_MS) {
-    return cachedStations;
+  if (cache.data && now - cache.at < STATION_CACHE_MS) {
+    return cache.data;
   }
-  if (cachedStationsPromise) return cachedStationsPromise;
+  if (cache.promise) return cache.promise;
 
-  cachedStationsPromise = (async () => {
+  cache.promise = (async () => {
     const stDb = client.db(STATION_DB);
 
     // FAST PATH: backend mirrors all station configs to `_stations` every reload.
@@ -30,8 +29,8 @@ async function loadStations(client: MongoClient): Promise<any[]> {
     try {
       const docs = await stDb.collection('_stations').find().toArray();
       if (docs.length > 0) {
-        cachedStations = docs;
-        cachedStationsAt = Date.now();
+        cache.data = docs;
+        cache.at = Date.now();
         return docs;
       }
     } catch {
@@ -56,15 +55,15 @@ async function loadStations(client: MongoClient): Promise<any[]> {
         }
       }
     }
-    cachedStations = out;
-    cachedStationsAt = Date.now();
+    cache.data = out;
+    cache.at = Date.now();
     return out;
   })();
 
   try {
-    return await cachedStationsPromise;
+    return await cache.promise;
   } finally {
-    cachedStationsPromise = null;
+    cache.promise = null;
   }
 }
 
@@ -88,7 +87,8 @@ export async function GET() {
 
     // 1. Load all station configs (cached ~60s — see loadStations)
     const tCfg = Date.now();
-    const fromCache = cachedStations && Date.now() - cachedStationsAt < STATION_CACHE_MS;
+    const _fleetCache = getFleetCache();
+    const fromCache = !!_fleetCache.data && Date.now() - _fleetCache.at < STATION_CACHE_MS;
     const stations = await loadStations(client);
     mark(fromCache ? `stationsCached[${stations.length}]` : `stationsLoaded[${stations.length}]`, tCfg);
 
@@ -270,6 +270,62 @@ export async function GET() {
     });
 
     mark('perStation', tPerStation);
+
+    // 4. On-demand fallback: for any station where the PM cache missed a head,
+    //    read the latest doc straight from PowerModule.{station} so the user
+    //    always sees the most recent value in MongoDB — no waiting on MQTT.
+    const tPmFallback = Date.now();
+    const stationById = new Map(stations.map(s => [s.id, s]));
+    const pmFallbackTargets: Array<{ stationId: string; col: string; needH1: boolean; needH2: boolean }> = [];
+    for (const r of results) {
+      const numHeads = r.station.chargerHeads || 2;
+      const h1 = r.powerModule.find((h: any) => h.head === 1);
+      const h2 = r.powerModule.find((h: any) => h.head === 2);
+      const needH1 = !h1?.online;
+      const needH2 = numHeads >= 2 && !h2?.online;
+      if (!needH1 && !needH2) continue;
+      const st = stationById.get(r.station.id);
+      if (!st) continue;
+      pmFallbackTargets.push({
+        stationId: r.station.id,
+        col: st.mongoCollections?.powerModule || st.name,
+        needH1,
+        needH2,
+      });
+    }
+    if (pmFallbackTargets.length > 0) {
+      const pmDb = client.db('PowerModule');
+      const FALLBACK_CONCURRENCY = 25;
+      for (let i = 0; i < pmFallbackTargets.length; i += FALLBACK_CONCURRENCY) {
+        const batch = pmFallbackTargets.slice(i, i + FALLBACK_CONCURRENCY);
+        await Promise.all(batch.map(async ({ stationId, col, needH1, needH2 }) => {
+          const [pm1, pm2] = await Promise.all([
+            needH1 ? pmDb.collection(col).findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null) : null,
+            needH2 ? pmDb.collection(col).findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null) : null,
+          ]);
+          const r = results.find(x => x.station.id === stationId);
+          if (!r) return;
+          for (const [h, doc] of [[1, pm1], [2, pm2]] as const) {
+            if (!doc) continue;
+            const p: any = (doc as any).payload || {};
+            const head = {
+              head: h,
+              pmCount:    Number(p[`PM${h}`]) || 0,
+              voltage:    Number(p[`Voltage${h}`]) || 0,
+              current:    Number(p[`Current${h}`]) || 0,
+              powerKw:    (Number(p[`Power${h}`]) || 0) / 1000,
+              timestamp:  p[`timestamp${h}`] || p.timestamp || '',
+              online:     true,
+            };
+            const idx = r.powerModule.findIndex((x: any) => x.head === h);
+            if (idx >= 0) r.powerModule[idx] = head;
+            else r.powerModule.push(head);
+          }
+        }));
+      }
+    }
+    mark(`pmFallback[${pmFallbackTargets.length}]`, tPmFallback);
+
     const total = Date.now() - t0;
     const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
     console.log(`[api/fleet] ${summary} total=${total}ms stations=${results.length}`);

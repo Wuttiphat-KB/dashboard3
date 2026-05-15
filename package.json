@@ -9,7 +9,8 @@
     "lint": "eslint",
     "server": "tsx server/index.ts",
     "server:watch": "tsx watch server/index.ts",
-    "import:stations": "tsx scripts/importStations.ts"
+    "import:stations": "tsx scripts/importStations.ts",
+    "create-indexes": "tsx scripts/createIndexes.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.1",
