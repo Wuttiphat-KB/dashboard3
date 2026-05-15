@@ -17,31 +17,39 @@ const pmCollections = new Map<string, string>();
  * Cache the latest PM head data per station in `_pm_data` (Station DB). The PM
  * payload from MQTT arrives one head at a time (`PM1` xor `PM2`), so we keep
  * head1/head2 in separate sub-docs and only overwrite the relevant one.
+ *
+ * Throttle is per (station, head) — a per-station throttle would drop PM1 when
+ * PM2 just arrived (and vice versa), leaving one head permanently empty.
  */
-const lastPmCacheAt = new Map<string, number>();
+const lastPmCacheAt = new Map<string, number>();  // key: `${stationId}#${head}`
 const PM_CACHE_THROTTLE_MS = 5_000;
 
 async function cachePmLatest(stationId: string, payload: any): Promise<void> {
-  const now = Date.now();
-  if ((now - (lastPmCacheAt.get(stationId) ?? 0)) < PM_CACHE_THROTTLE_MS) return;
-  lastPmCacheAt.set(stationId, now);
-
   if (!payload || typeof payload !== 'object') return;
 
+  const now = Date.now();
   const set: any = { stationId, updatedAt: new Date() };
+  let wroteAny = false;
+
   for (const head of [1, 2] as const) {
-    if (payload[`PM${head}`] !== undefined) {
-      set[`head${head}`] = {
-        pmCount:     Number(payload[`PM${head}`]) || 0,
-        voltage:     Number(payload[`Voltage${head}`]) || 0,
-        current:     Number(payload[`Current${head}`]) || 0,
-        powerKw:     (Number(payload[`Power${head}`]) || 0) / 1000,
-        prevVoltage: Number(payload[`Prevoltage${head}`]) || 0,
-        prevCurrent: Number(payload[`Precurrent${head}`]) || 0,
-        timestamp:   payload[`timestamp${head}`] || payload.timestamp || '',
-      };
-    }
+    if (payload[`PM${head}`] === undefined) continue;
+    const key = `${stationId}#${head}`;
+    if ((now - (lastPmCacheAt.get(key) ?? 0)) < PM_CACHE_THROTTLE_MS) continue;
+    lastPmCacheAt.set(key, now);
+
+    set[`head${head}`] = {
+      pmCount:     Number(payload[`PM${head}`]) || 0,
+      voltage:     Number(payload[`Voltage${head}`]) || 0,
+      current:     Number(payload[`Current${head}`]) || 0,
+      powerKw:     (Number(payload[`Power${head}`]) || 0) / 1000,
+      prevVoltage: Number(payload[`Prevoltage${head}`]) || 0,
+      prevCurrent: Number(payload[`Precurrent${head}`]) || 0,
+      timestamp:   payload[`timestamp${head}`] || payload.timestamp || '',
+    };
+    wroteAny = true;
   }
+
+  if (!wroteAny) return;
 
   try {
     const db = getStationDb();
