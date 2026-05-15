@@ -6,12 +6,49 @@
 import { getState } from '../state';
 import { broadcast } from '../ws';
 import { onMessage } from '../mqtt';
-import { getDbByName } from '../mongo';
+import { getDbByName, getStationDb } from '../mongo';
 
 const METER_DB = 'meter';
 
 /** stationId → collection name (from station config) */
 const meterCollections = new Map<string, string>();
+
+/**
+ * Cache latest meter snapshot per station in `_meter_latest` (Station DB) so the
+ * /api/fleet handler can read all 200 station meters from one collection
+ * instead of doing 200 findOne()s against the per-station meter collections.
+ *
+ * Throttled to 1 write per station per 5s — meter messages can arrive faster
+ * than that and we don't need sub-second freshness for the dashboard.
+ */
+const lastMeterCacheAt = new Map<string, number>();
+const METER_CACHE_THROTTLE_MS = 5_000;
+
+async function cacheMeterLatest(stationId: string, payload: any): Promise<void> {
+  const now = Date.now();
+  if ((now - (lastMeterCacheAt.get(stationId) ?? 0)) < METER_CACHE_THROTTLE_MS) return;
+  lastMeterCacheAt.set(stationId, now);
+  try {
+    const db = getStationDb();
+    await db.collection('_meter_latest').updateOne(
+      { stationId },
+      {
+        $set: {
+          stationId,
+          meter1:     Number(payload?.meter1 ?? 0),
+          meter2:     Number(payload?.meter2 ?? 0),
+          timestamp1: payload?.timestamp1 || '',
+          timestamp2: payload?.timestamp2 || '',
+          timestamp:  payload?.timestamp || '',
+          updatedAt:  new Date(),
+        },
+      },
+      { upsert: true },
+    );
+  } catch {
+    // non-fatal
+  }
+}
 
 export function registerMeterStation(stationId: string, collectionName: string): void {
   const prev = meterCollections.get(stationId);
@@ -51,6 +88,7 @@ export function initMeterHandler(): void {
     state.meter = payload;
 
     forwardMeter(stationId, topic, payload);
+    cacheMeterLatest(stationId, payload);
     broadcast('meter', stationId, payload);
   });
 }

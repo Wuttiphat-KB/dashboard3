@@ -6,12 +6,54 @@
 import { getState } from '../state';
 import { broadcast } from '../ws';
 import { onMessage } from '../mqtt';
-import { getDbByName } from '../mongo';
+import { getDbByName, getStationDb } from '../mongo';
 
 const POWER_MODULE_DB = 'PowerModule';
 
 /** stationId → collection name (from station config) */
 const pmCollections = new Map<string, string>();
+
+/**
+ * Cache the latest PM head data per station in `_pm_data` (Station DB). The PM
+ * payload from MQTT arrives one head at a time (`PM1` xor `PM2`), so we keep
+ * head1/head2 in separate sub-docs and only overwrite the relevant one.
+ */
+const lastPmCacheAt = new Map<string, number>();
+const PM_CACHE_THROTTLE_MS = 5_000;
+
+async function cachePmLatest(stationId: string, payload: any): Promise<void> {
+  const now = Date.now();
+  if ((now - (lastPmCacheAt.get(stationId) ?? 0)) < PM_CACHE_THROTTLE_MS) return;
+  lastPmCacheAt.set(stationId, now);
+
+  if (!payload || typeof payload !== 'object') return;
+
+  const set: any = { stationId, updatedAt: new Date() };
+  for (const head of [1, 2] as const) {
+    if (payload[`PM${head}`] !== undefined) {
+      set[`head${head}`] = {
+        pmCount:     Number(payload[`PM${head}`]) || 0,
+        voltage:     Number(payload[`Voltage${head}`]) || 0,
+        current:     Number(payload[`Current${head}`]) || 0,
+        powerKw:     (Number(payload[`Power${head}`]) || 0) / 1000,
+        prevVoltage: Number(payload[`Prevoltage${head}`]) || 0,
+        prevCurrent: Number(payload[`Precurrent${head}`]) || 0,
+        timestamp:   payload[`timestamp${head}`] || payload.timestamp || '',
+      };
+    }
+  }
+
+  try {
+    const db = getStationDb();
+    await db.collection('_pm_data').updateOne(
+      { stationId },
+      { $set: set },
+      { upsert: true },
+    );
+  } catch {
+    // non-fatal
+  }
+}
 
 export function registerPmStation(stationId: string, collectionName: string): void {
   const prev = pmCollections.get(stationId);
@@ -51,6 +93,7 @@ export function initPowerModuleHandler(): void {
     state.powerModule = payload;
 
     forwardPm(stationId, topic, payload);
+    cachePmLatest(stationId, payload);
     broadcast('powerModule', stationId, payload);
   });
 }

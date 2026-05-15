@@ -94,9 +94,24 @@ async function loadStationsFromMongo(): Promise<StationConfig[]> {
  * Mirror the freshly-loaded station list into a single `_stations` collection so the
  * Next.js API can read all configs in one query instead of doing listCollections() +
  * findOne() over ~230 per-station collections (which was taking 10+ minutes here).
+ *
+ * Guarded against re-entrancy — on this slow Mongo, a single sync can take 2+
+ * minutes, and stacking concurrent ones makes everything worse.
  */
+let syncStationsInflight = false;
+let lastSyncSignature = '';
+
 async function syncStationsMeta(stations: StationConfig[]): Promise<void> {
   if (stations.length === 0) return;
+  if (syncStationsInflight) {
+    console.log('[init] syncStationsMeta skipped — previous sync still running');
+    return;
+  }
+  // Skip if the list hasn't actually changed since the last successful sync
+  const sig = stations.map(s => `${s.id}:${JSON.stringify(s.mqttTopics)}`).sort().join('|');
+  if (sig === lastSyncSignature) return;
+
+  syncStationsInflight = true;
   try {
     const db = getStationDb();
     const ops = stations.map(st => {
@@ -114,9 +129,12 @@ async function syncStationsMeta(stations: StationConfig[]): Promise<void> {
     // Drop any stations no longer in the latest list
     const ids = stations.map(s => s.id);
     await db.collection('_stations').deleteMany({ id: { $nin: ids } });
+    lastSyncSignature = sig;
     console.log(`[init] synced ${stations.length} stations → _stations in ${Date.now() - tStart}ms`);
   } catch (err: any) {
     console.error('[init] syncStationsMeta failed:', err?.message || err);
+  } finally {
+    syncStationsInflight = false;
   }
 }
 
@@ -215,8 +233,13 @@ async function main() {
   // Initial run after 15s (let MQTT data populate first)
   setTimeout(() => { checkAllAlerts(); }, 15_000);
 
-  // 8. Auto-reload stations every 10s — handles add / edit / delete
+  // 8. Auto-reload stations every 60s — handles add / edit / delete.
+  // (Previously 10s, but on a slow Mongo each reload + sync can take 2+ minutes,
+  //  so 10s caused dozens of concurrent reloads stacking up.)
+  let reloadInflight = false;
   setInterval(async () => {
+    if (reloadInflight) return;
+    reloadInflight = true;
     try {
       const latest = await loadStationsFromMongo();
       const latestIds = new Set(latest.map(s => s.id));
@@ -251,11 +274,13 @@ async function main() {
       await syncStationsMeta(latest);
     } catch (err: any) {
       console.error('[init] reload error:', err.message);
+    } finally {
+      reloadInflight = false;
     }
-  }, 10_000);
+  }, 60_000);
 
   console.log('[init] Heartbeat timeout checker running (30s interval)');
-  console.log('[init] Station auto-reload running (10s interval — picks up add/edit/delete)');
+  console.log('[init] Station auto-reload running (60s interval — picks up add/edit/delete)');
   console.log('[init] Backend ready\n');
 }
 

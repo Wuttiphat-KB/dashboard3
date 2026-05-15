@@ -68,17 +68,13 @@ async function loadStations(client: MongoClient): Promise<any[]> {
   }
 }
 
-const DATA_DBS = {
-  heartbeat:   'Heartbeat',
-  powerModule: 'PowerModule',
-  meter:       'meter',
-  router:      'Router',
-  plc:         'PlcDatabase',
-} as const;
-
 /**
  * GET /api/fleet
  * Returns stations + summary dashboard data for every station in one call.
+ *
+ * All data comes from `Station` DB's `_*` cache collections (populated by the
+ * backend) — no queries against the per-station data DBs. This makes the call
+ * O(7 queries) instead of O(800).
  */
 export async function GET() {
   const t0 = Date.now();
@@ -96,109 +92,113 @@ export async function GET() {
     const stations = await loadStations(client);
     mark(fromCache ? `stationsCached[${stations.length}]` : `stationsLoaded[${stations.length}]`, tCfg);
 
-    // 2. Load live device status + router data + script status + plc data + fan data
+    // 2. Load live caches in parallel — all stations in one query each.
+    // The Mongo on this deployment is too slow to do per-station queries (200 ×
+    // 4 queries = 30+ minutes), so the backend is now mirroring meter + PM
+    // data into _meter_latest and _pm_data, and we read everything from
+    // Station DB's _* collections only.
     const tCaches = Date.now();
-    const [liveStatuses, routerDataDocs, scriptStatuses, plcDataDocs, fanDataDocs] = await Promise.all([
-      client!.db(STATION_DB).collection('_device_status').find().toArray().catch(() => []),
-      client!.db(STATION_DB).collection('_router_data').find().toArray().catch(() => []),
-      client!.db(STATION_DB).collection('_script_status').find().toArray().catch(() => []),
-      client!.db(STATION_DB).collection('_plc_data').find().toArray().catch(() => []),
-      client!.db(STATION_DB).collection('_fan_data').find().toArray().catch(() => []),
+    const stDb = client.db(STATION_DB);
+    const [
+      liveStatuses,
+      routerDataDocs,
+      scriptStatuses,
+      plcDataDocs,
+      fanDataDocs,
+      meterLatestDocs,
+      pmDataDocs,
+    ] = await Promise.all([
+      stDb.collection('_device_status').find().toArray().catch(() => []),
+      stDb.collection('_router_data').find().toArray().catch(() => []),
+      stDb.collection('_script_status').find().toArray().catch(() => []),
+      stDb.collection('_plc_data').find().toArray().catch(() => []),
+      stDb.collection('_fan_data').find().toArray().catch(() => []),
+      stDb.collection('_meter_latest').find().toArray().catch(() => []),
+      stDb.collection('_pm_data').find().toArray().catch(() => []),
     ]);
     mark('loadCaches', tCaches);
 
-    // 3. For each station, fetch summary data
+    // Index the caches once instead of doing .find() inside the per-station loop
+    const byStationId = <T extends { stationId?: string }>(arr: T[]) => {
+      const m = new Map<string, T>();
+      for (const d of arr) if (d.stationId) m.set(d.stationId, d);
+      return m;
+    };
+    const routerByStation = byStationId(routerDataDocs as any[]);
+    const plcByStation    = byStationId(plcDataDocs as any[]);
+    const fanByStation    = byStationId(fanDataDocs as any[]);
+    const meterByStation  = byStationId(meterLatestDocs as any[]);
+    const pmByStation     = byStationId(pmDataDocs as any[]);
+    const scriptsByStation = new Map<string, any[]>();
+    for (const s of scriptStatuses as any[]) {
+      if (!s.stationId) continue;
+      const list = scriptsByStation.get(s.stationId) || [];
+      list.push(s);
+      scriptsByStation.set(s.stationId, list);
+    }
+    const liveByStation = new Map<string, Record<string, any>>();
+    for (const d of liveStatuses as any[]) {
+      if (!d.stationId) continue;
+      const bag = liveByStation.get(d.stationId) || {};
+      bag[d.device] = d;
+      liveByStation.set(d.stationId, bag);
+    }
+
+    // 3. Build per-station summary from pre-loaded caches (NO Mongo queries here).
     const tPerStation = Date.now();
     const now = Date.now();
-    const results = await Promise.all(stations.map(async (st) => {
-      // Per-database collection name (each db may use a different collection per station)
-      const cols = st.mongoCollections || {};
-      const colHeartbeat = cols.heartbeatFallingEdge || st.name;
-      const colMeter     = cols.meter       || st.name;
-      const colPM        = cols.powerModule || st.name;
-      const colRouter    = cols.router      || st.name;
-      const colPlc       = cols.statePlc    || st.name;
+    const tsToIso = (ts: any): string | null => {
+      if (!ts) return null;
+      return ts instanceof Date ? ts.toISOString() : String(ts);
+    };
+    const computeOnline = (ts: string | Date | null | undefined): boolean => {
+      if (!ts) return false;
+      const t = ts instanceof Date ? ts.getTime() : new Date(ts).getTime();
+      return !isNaN(t) && (now - t) < HB_TIMEOUT;
+    };
 
-      // Heartbeat — prefer live status from backend, fallback to MongoDB
-      const liveHb = liveStatuses.find((d: any) => d.stationId === st.id && d.device === 'heartbeat');
-      const liveRt = liveStatuses.find((d: any) => d.stationId === st.id && d.device === 'router');
-      const livePi5 = liveStatuses.find((d: any) => d.stationId === st.id && d.device === 'heartbeatPi5');
+    const results = stations.map((st) => {
+      const live = liveByStation.get(st.id) || {};
+      const liveHb  = live.heartbeat;
+      const liveRt  = live.router;
+      const livePi5 = live.heartbeatPi5;
 
-      // Helper: device is online ONLY if message arrived within HB_TIMEOUT
-      // Don't trust the cached `online` flag in MongoDB — check timestamp age instead
-      const computeOnline = (ts: string | Date | null | undefined): boolean => {
-        if (!ts) return false;
-        const t = ts instanceof Date ? ts.getTime() : new Date(ts).getTime();
-        return !isNaN(t) && (now - t) < HB_TIMEOUT;
-      };
+      const hbTs  = tsToIso(liveHb?.lastSeen);
+      const rtTs  = tsToIso(liveRt?.lastSeen);
+      const pi5Ts = tsToIso(livePi5?.lastSeen);
 
-      let hbTs: string | null = null;
-      if (liveHb?.lastSeen) {
-        hbTs = liveHb.lastSeen instanceof Date ? liveHb.lastSeen.toISOString() : liveHb.lastSeen;
-      } else {
-        const hbDoc = await client!.db(DATA_DBS.heartbeat).collection(colHeartbeat)
-          .findOne({}, { sort: { _id: -1 } }).catch(() => null);
-        hbTs = hbDoc?.payload?.timestamp || null;
-      }
-      const hbOnline = computeOnline(hbTs);
-
-      let rtTs: string | null = null;
-      if (liveRt?.lastSeen) {
-        rtTs = liveRt.lastSeen instanceof Date ? liveRt.lastSeen.toISOString() : liveRt.lastSeen;
-      } else {
-        const rtDoc = await client!.db(DATA_DBS.router).collection(colRouter)
-          .findOne({}, { sort: { _id: -1 } }).catch(() => null);
-        rtTs = rtDoc?.payload?.timestamp || null;
-      }
-      const rtOnline = computeOnline(rtTs);
-
-      const pi5Ts = livePi5?.lastSeen
-        ? (livePi5.lastSeen instanceof Date ? livePi5.lastSeen.toISOString() : livePi5.lastSeen)
-        : null;
+      const hbOnline  = computeOnline(hbTs);
+      const rtOnline  = computeOnline(rtTs);
       const pi5Online = computeOnline(pi5Ts);
 
-      // Meter — latest + one from > 2 days ago for stalled detection
-      const meterCol = client!.db(DATA_DBS.meter).collection(colMeter);
-      const cutoff = new Date(Date.now() - 2 * 86_400_000);
-      const [mtDoc, mtOldDoc] = await Promise.all([
-        meterCol.findOne({}, { sort: { _id: -1 } }).catch(() => null),
-        meterCol.findOne({ receivedAt: { $lte: cutoff } }, { sort: { receivedAt: -1 } }).catch(() => null),
-      ]);
-      const mp = mtDoc?.payload || {};
-      const mpOld = mtOldDoc?.payload || null;
-      const stationHeads = Number(st.chargerHeads) || 2;
-      // Stalled = value at >2 days ago is the same as current value
-      // For single-head stations, ignore meter2 (always false)
-      const stalled1 = mpOld != null && Number(mpOld.meter1 ?? 0) === Number(mp.meter1 ?? 0);
-      const stalled2 = stationHeads >= 2 && mpOld != null && Number(mpOld.meter2 ?? 0) === Number(mp.meter2 ?? 0);
+      // Meter — from _meter_latest cache (backend keeps it warm)
+      const meterDoc = meterByStation.get(st.id);
+      const mp = meterDoc || {};
+      // Stalled detection is no longer per-request — set to false; the meter
+      // overview page should derive this from timestamp age instead.
+      const stalled1 = false;
+      const stalled2 = false;
 
-      // Power Module — query latest for EACH head separately
-      const pmCol = client!.db(DATA_DBS.powerModule).collection(colPM);
-      const [pm1Doc, pm2Doc] = await Promise.all([
-        pmCol.findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null),
-        pmCol.findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null),
-      ]);
+      // Power Module — from _pm_data cache
+      const pmDoc = pmByStation.get(st.id);
       const pmHeads: Record<number, any> = {};
-      for (const [h, doc] of [[1, pm1Doc], [2, pm2Doc]] as const) {
-        if (!doc) continue;
-        const p = doc.payload || {};
-        pmHeads[h] = {
-          head: h,
-          pmCount: Number(p[`PM${h}`]) || 0,
-          voltage: Number(p[`Voltage${h}`]) || 0,
-          current: Number(p[`Current${h}`]) || 0,
-          powerKw: (Number(p[`Power${h}`]) || 0) / 1000,
-          timestamp: p[`timestamp${h}`] || p.timestamp || '',
-          online: true,
-        };
+      for (const h of [1, 2] as const) {
+        const head = (pmDoc as any)?.[`head${h}`];
+        if (head) {
+          pmHeads[h] = {
+            head: h,
+            pmCount: head.pmCount || 0,
+            voltage: head.voltage || 0,
+            current: head.current || 0,
+            powerKw: head.powerKw || 0,
+            timestamp: head.timestamp || '',
+            online: true,
+          };
+        }
       }
 
-      // PLC — prefer live data (from MQTT cache), fallback to MongoDB PlcDatabase
-      const plcLive = plcDataDocs.find((d: any) => d.stationId === st.id)?.payload;
-      const plcDoc = plcLive
-        ? null  // live data takes precedence
-        : await client!.db(DATA_DBS.plc).collection(colPlc).findOne({}, { sort: { _id: -1 } }).catch(() => null);
-      const plcSource = plcLive || plcDoc;
+      // PLC — from _plc_data cache
+      const plcSource = (plcByStation.get(st.id) as any)?.payload;
       const plcHeads = [1, 2].map(h => {
         if (!plcSource) return { head: h, chargeState: 'Unknown', powerKw: 0, soc: 0 };
         return {
@@ -209,25 +209,15 @@ export async function GET() {
         };
       });
 
-      // Router data (temp, rssi, etc.) from backend cache
-      const routerData = routerDataDocs.find((d: any) => d.stationId === st.id);
+      const routerData = routerByStation.get(st.id);
+      const fanDoc = fanByStation.get(st.id);
+      const fans = (fanDoc as any)?.fans || {};
+      const fanTimestamp = tsToIso((fanDoc as any)?.updatedAt) || '';
 
-      // Fan data — latest snapshot from backend cache
-      const fanDoc = fanDataDocs.find((d: any) => d.stationId === st.id);
-      const fans = fanDoc?.fans || {};
-      const fanTimestamp = fanDoc?.updatedAt
-        ? (fanDoc.updatedAt instanceof Date ? fanDoc.updatedAt.toISOString() : String(fanDoc.updatedAt))
-        : '';
-
-      // Script status from backend cache
-      const stScripts = scriptStatuses.filter((s: any) => s.stationId === st.id);
+      const stScripts = scriptsByStation.get(st.id) || [];
       const scriptFault = stScripts.find((s: any) => s.script === 'fault_status');
       const scriptPlc   = stScripts.find((s: any) => s.script === 'plc');
-      const scriptOnline = (s: any) => {
-        if (!s?.lastSeen) return false;
-        const t = s.lastSeen instanceof Date ? s.lastSeen.getTime() : new Date(s.lastSeen).getTime();
-        return !isNaN(t) && (now - t) < HB_TIMEOUT;
-      };
+      const scriptOnline = (s: any) => computeOnline(tsToIso(s?.lastSeen));
 
       // Compute status — exclude Pi5 if station has no Pi5 device
       const hasPi5 = st.hasPi5 !== false;  // default true
@@ -273,11 +263,11 @@ export async function GET() {
         powerModule: [1, 2].map(h => pmHeads[h] || { head: h, pmCount: 0, voltage: 0, current: 0, powerKw: 0, timestamp: '', online: false }),
         plcHeads,
         scripts: {
-          faultStatus: { online: scriptOnline(scriptFault), lastHeartbeat: scriptFault?.lastSeen ? (scriptFault.lastSeen instanceof Date ? scriptFault.lastSeen.toISOString() : scriptFault.lastSeen) : null },
-          plc:         { online: scriptOnline(scriptPlc),   lastHeartbeat: scriptPlc?.lastSeen   ? (scriptPlc.lastSeen   instanceof Date ? scriptPlc.lastSeen.toISOString()   : scriptPlc.lastSeen)   : null },
+          faultStatus: { online: scriptOnline(scriptFault), lastHeartbeat: tsToIso(scriptFault?.lastSeen) },
+          plc:         { online: scriptOnline(scriptPlc),   lastHeartbeat: tsToIso(scriptPlc?.lastSeen) },
         },
       };
-    }));
+    });
 
     mark('perStation', tPerStation);
     const total = Date.now() - t0;
