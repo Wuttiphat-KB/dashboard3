@@ -607,13 +607,13 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
   })();
 
   // Color helper for "X/Y online" style stats:
-  //   100%       → green
+  //   ≥90%       → green
   //   ≥80%       → yellow
   //   <80%       → red
   const ratioColor = (n: number, total: number) => {
     if (total === 0) return 'var(--text-muted)';
-    if (n === total) return 'var(--ok-text)';
     const pct = n / total;
+    if (pct >= 0.90) return 'var(--ok-text)';
     if (pct >= 0.80) return 'var(--warn-text)';
     return 'var(--error-text)';
   };

@@ -51,19 +51,22 @@ interface StationConfig {
 
 /** Load station configs from MongoDB db=Station — uses the shared connection + parallel findOne */
 const STATIONS_LOAD_CONCURRENCY = 20;
-async function loadStationsFromMongo(): Promise<StationConfig[]> {
+async function loadStationsFromMongo(opts?: { forceSlowScan?: boolean }): Promise<StationConfig[]> {
   try {
     const db = getStationDb();
 
     // FAST PATH: read from `_stations` mirror if it's already been populated by a
-    // previous run. Skips the slow per-collection scan entirely.
-    try {
-      const mirrored = await db.collection('_stations').find().toArray();
-      if (mirrored.length > 0) {
-        return mirrored.filter(d => d.id && d.mqttTopics) as unknown as StationConfig[];
+    // previous run. Skipped when forceSlowScan=true so startup can reconcile
+    // any per-station collections that were added without touching _stations.
+    if (!opts?.forceSlowScan) {
+      try {
+        const mirrored = await db.collection('_stations').find().toArray();
+        if (mirrored.length > 0) {
+          return mirrored.filter(d => d.id && d.mqttTopics) as unknown as StationConfig[];
+        }
+      } catch {
+        // fall through to slow scan
       }
-    } catch {
-      // fall through to slow scan
     }
 
     // SLOW PATH: list per-station collections, findOne each, in parallel batches.
@@ -287,8 +290,10 @@ async function main() {
   connectMqtt();
 
   // 5. Load station configs from MongoDB (db=Station)
-  //    Fall back to MOCK_STATIONS if none found
-  let stations = await loadStationsFromMongo();
+  //    Fall back to MOCK_STATIONS if none found.
+  //    forceSlowScan: bypass _stations cache on startup so any per-station
+  //    collection that was added without touching _stations gets picked up.
+  let stations = await loadStationsFromMongo({ forceSlowScan: true });
 
   if (stations.length === 0) {
     console.log('[init] No stations in MongoDB db=Station, using MOCK_STATIONS as fallback');
