@@ -46,7 +46,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
   if (!station || !data) {
     return (
       <div>
-        <Link href="/" style={{ fontSize: 12, color: 'var(--info-text)', textDecoration: 'none' }}>← Fleet Overview</Link>
+        <Link href="/" style={{ fontSize: 12, color: 'var(--info-text)', textDecoration: 'none' }}>← Overview</Link>
         <div className="card" style={{ marginTop: '1rem', textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           Station &quot;{id}&quot; not found. <Link href="/config" style={{ color: 'var(--info-text)' }}>Add in Config</Link>
         </div>
@@ -71,7 +71,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
     <div>
       {/* Breadcrumb */}
       <div style={{ marginBottom: '1rem', fontSize: 11, color: 'var(--text-muted)' }}>
-        <Link href="/" style={{ color: 'var(--info-text)', textDecoration: 'none' }}>Fleet Overview</Link>
+        <Link href="/" style={{ color: 'var(--info-text)', textDecoration: 'none' }}>Overview</Link>
         <span style={{ margin: '0 6px' }}>›</span>
         <span>{station.displayName}</span>
       </div>

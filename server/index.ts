@@ -111,7 +111,10 @@ async function syncStationsMeta(stations: StationConfig[]): Promise<void> {
     return;
   }
   // Skip if the list hasn't actually changed since the last successful sync
-  const sig = stations.map(s => `${s.id}:${JSON.stringify(s.mqttTopics)}`).sort().join('|');
+  // (include mongoCollections so collection renames trigger a re-sync).
+  const sig = stations
+    .map(s => `${s.id}:${JSON.stringify(s.mqttTopics)}:${JSON.stringify(s.mongoCollections)}`)
+    .sort().join('|');
   if (sig === lastSyncSignature) return;
 
   syncStationsInflight = true;
@@ -306,7 +309,13 @@ async function main() {
   const registeredConfigs = new Map<string, string>();  // stationId → JSON.stringify(mqttTopics)
 
   function topicSignature(st: StationConfig): string {
-    return JSON.stringify(st.mqttTopics || {});
+    // Include BOTH mqttTopics and mongoCollections so changing a collection
+    // name in /config (e.g. fixing a typo BNK1 → BKN1) triggers a re-register
+    // and modules start writing to the new collection.
+    return JSON.stringify({
+      topics: st.mqttTopics || {},
+      cols:   st.mongoCollections || {},
+    });
   }
 
   // 6. Register all initial stations

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useFleet, FleetStation } from '@/lib/hooks/useFleet';
 
@@ -112,22 +113,96 @@ function StationCard({ item }: { item: FleetStation }) {
   );
 }
 
+const STATUS_ORDER: Record<string, number> = { offline: 0, degraded: 1, online: 2 };
+
 export default function FleetOverview() {
   const { fleet, loading, error } = useFleet();
+  const [search, setSearch] = useState('');
+  const [sort, setSort]     = useState<'az' | 'problems'>('az');
 
   const onlineCount   = fleet.filter(f => f.status === 'online').length;
   const degradedCount = fleet.filter(f => f.status === 'degraded').length;
   const offlineCount  = fleet.filter(f => f.status === 'offline').length;
 
+  // Filter by search query — match against id, name, displayName
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return fleet;
+    return fleet.filter(({ station }) => (
+      (station.id          || '').toLowerCase().includes(q) ||
+      (station.name        || '').toLowerCase().includes(q) ||
+      (station.displayName || '').toLowerCase().includes(q)
+    ));
+  }, [fleet, search]);
+
+  // Sort: A-Z by displayName, or Problems First (offline → degraded → online)
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    if (sort === 'az') {
+      arr.sort((a, b) => (a.station.displayName || a.station.id).localeCompare(b.station.displayName || b.station.id));
+    } else {
+      arr.sort((a, b) => {
+        const d = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+        if (d !== 0) return d;
+        return (a.station.displayName || a.station.id).localeCompare(b.station.displayName || b.station.id);
+      });
+    }
+    return arr;
+  }, [filtered, sort]);
+
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 className="section-title" style={{ fontSize: 18 }}>Fleet Overview</h1>
-        <p className="section-subtitle">
-          {loading ? 'Loading stations...' : `${fleet.length} stations`}
-          {error && <span style={{ color: 'var(--error-text)' }}> · API error: {error}</span>}
-        </p>
+      <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h1 className="section-title" style={{ fontSize: 18 }}>Overview</h1>
+          <p className="section-subtitle">
+            {loading ? 'Loading stations...' : `${fleet.length} stations`}
+            {filtered.length !== fleet.length && ` · ${filtered.length} shown`}
+            {error && <span style={{ color: 'var(--error-text)' }}> · API error: {error}</span>}
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Sort toggle */}
+          <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+            <button
+              onClick={() => setSort('az')}
+              style={{
+                padding: '5px 12px', fontSize: 11, fontFamily: 'var(--font-geist-mono), monospace',
+                cursor: 'pointer', border: 'none',
+                background: sort === 'az' ? 'var(--info-bg)' : 'transparent',
+                color: sort === 'az' ? 'var(--info-text)' : 'var(--text-secondary)',
+                fontWeight: sort === 'az' ? 600 : 400,
+                borderRight: '1px solid var(--border)',
+              }}
+            >
+              A-Z
+            </button>
+            <button
+              onClick={() => setSort('problems')}
+              style={{
+                padding: '5px 12px', fontSize: 11, fontFamily: 'var(--font-geist-mono), monospace',
+                cursor: 'pointer', border: 'none',
+                background: sort === 'problems' ? 'var(--error-bg)' : 'transparent',
+                color: sort === 'problems' ? 'var(--error-text)' : 'var(--text-secondary)',
+                fontWeight: sort === 'problems' ? 600 : 400,
+              }}
+            >
+              Problems First
+            </button>
+          </div>
+
+          {/* Search */}
+          <input
+            type="text"
+            className="input"
+            placeholder="Search stations..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: 220, fontSize: 12 }}
+          />
+        </div>
       </div>
 
       {/* Summary stats */}
@@ -151,9 +226,16 @@ export default function FleetOverview() {
         </div>
       )}
 
+      {/* No results */}
+      {!loading && sorted.length === 0 && (
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-muted)' }}>
+          {search.trim() ? `No stations match "${search}"` : 'No stations configured.'}
+        </div>
+      )}
+
       {/* Station grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
-        {fleet.map(item => (
+        {sorted.map(item => (
           <StationCard key={item.station.id} item={item} />
         ))}
       </div>

@@ -7,7 +7,7 @@ const SIDEBAR_W     = 220;
 const SIDEBAR_W_COL = 52;
 
 const NAV_MAIN = [
-  { href: '/',         label: 'Fleet Overview',  abbr: 'FL' },
+  { href: '/',         label: 'Overview',        abbr: 'OV' },
   { href: '/alerts',   label: 'Alert Center',    abbr: 'AL' },
   { href: '/config',   label: 'Station Config',  abbr: 'SC' },
   { href: '/settings', label: 'Settings',        abbr: 'ST' },
