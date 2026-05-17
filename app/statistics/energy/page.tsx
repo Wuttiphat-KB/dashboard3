@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useStations } from '@/lib/hooks/useStations';
-import LineChart from '@/components/ui/LineChart';
+import SearchSelect from '@/components/ui/SearchSelect';
+import EnergyChart, { EnergyPoint } from '@/components/ui/EnergyChart';
 
 interface DailyAgg {
   date: string;
@@ -94,16 +95,14 @@ export default function ChargingReportPage() {
     return { sessions, kwh, days, avg: kwh / days };
   }, [data]);
 
-  const head1Series = useMemo(() =>
-    (data || []).map(d => ({ timestamp: d.date + 'T00:00:00Z', value: d.head1.totalKwh })),
-  [data]);
-
-  const head2Series = useMemo(() =>
-    (data || []).map(d => ({ timestamp: d.date + 'T00:00:00Z', value: d.head2.totalKwh })),
-  [data]);
-
-  const sessionsSeries = useMemo(() =>
-    (data || []).map(d => ({ timestamp: d.date + 'T00:00:00Z', value: d.head1.sessions + d.head2.sessions })),
+  const chartData = useMemo<EnergyPoint[]>(() =>
+    (data || []).map(d => ({
+      date: d.date,
+      head1Kwh: d.head1.totalKwh,
+      head2Kwh: d.head2.totalKwh,
+      head1Sessions: d.head1.sessions,
+      head2Sessions: d.head2.sessions,
+    })),
   [data]);
 
   const selectedStation = stations.find(s => s.id === stationId);
@@ -119,19 +118,20 @@ export default function ChargingReportPage() {
       {/* Controls */}
       <div className="card" style={{ padding: '0.875rem 1rem', marginBottom: '1rem' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
-          {/* Station selector */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 200 }}>
+          {/* Station selector (searchable) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 240 }}>
             <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Station</label>
-            <select
-              className="input"
+            <SearchSelect
               value={stationId}
-              onChange={e => setStationId(e.target.value)}
-              style={{ fontSize: 13 }}
-            >
-              {stations.map(s => (
-                <option key={s.id} value={s.id}>{s.displayName || s.name || s.id}</option>
-              ))}
-            </select>
+              onChange={setStationId}
+              options={stations.map(s => ({
+                value: s.id,
+                label: s.displayName || s.name || s.id,
+                hint:  s.id !== (s.displayName || s.name) ? s.id : undefined,
+              }))}
+              placeholder="Search station..."
+              width={260}
+            />
           </div>
 
           {/* Preset selector */}
@@ -217,26 +217,18 @@ export default function ChargingReportPage() {
         <>
           <div className="card" style={{ marginBottom: '1rem' }}>
             <div className="card-header">
-              <span className="card-title">Daily kWh — Head 1</span>
+              <span className="card-title">Daily Energy (kWh)</span>
               <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{range.start} → {range.end}</span>
             </div>
-            <LineChart data={head1Series} height={200} color="var(--info)" unit=" kWh" />
+            <EnergyChart data={chartData} height={260} mode="kwh" />
           </div>
 
           <div className="card" style={{ marginBottom: '1rem' }}>
             <div className="card-header">
-              <span className="card-title">Daily kWh — Head 2</span>
+              <span className="card-title">Daily Sessions</span>
               <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{range.start} → {range.end}</span>
             </div>
-            <LineChart data={head2Series} height={200} color="var(--warn)" unit=" kWh" />
-          </div>
-
-          <div className="card" style={{ marginBottom: '1rem' }}>
-            <div className="card-header">
-              <span className="card-title">Daily Sessions — Total (Head 1 + Head 2)</span>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{range.start} → {range.end}</span>
-            </div>
-            <LineChart data={sessionsSeries} height={180} color="var(--ok)" unit="" />
+            <EnergyChart data={chartData} height={220} mode="sessions" />
           </div>
 
           {/* Detail table */}
