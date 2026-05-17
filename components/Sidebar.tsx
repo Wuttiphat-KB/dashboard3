@@ -13,6 +13,10 @@ const NAV_MAIN = [
   { href: '/settings', label: 'Settings',        abbr: 'ST' },
 ];
 
+const NAV_STATS = [
+  { href: '/statistics/energy', label: 'Energy Usage', abbr: 'EU' },
+];
+
 const NAV_OVERVIEW = [
   { href: '/overview/heartbeat',   label: 'Heartbeat',    abbr: 'HB' },
   { href: '/overview/powermodule', label: 'Power Module', abbr: 'PM' },
@@ -188,6 +192,26 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
           {collapsed && <div style={{ height: 4 }} />}
 
           {NAV_MAIN.map(({ href, label, abbr }) => (
+            <NavLink
+              key={href}
+              href={href} label={label} abbr={abbr}
+              isActive={isActive(href)}
+              onClick={onClose}
+              collapsed={collapsed}
+            />
+          ))}
+
+          {/* Divider */}
+          <div style={{ height: 1, background: 'var(--border-subtle)', margin: collapsed ? '8px 6px' : '10px 4px' }} />
+
+          {/* Statistics links */}
+          {!collapsed && (
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '4px 12px 6px', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
+              Statistics
+            </div>
+          )}
+
+          {NAV_STATS.map(({ href, label, abbr }) => (
             <NavLink
               key={href}
               href={href} label={label} abbr={abbr}

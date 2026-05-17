@@ -20,6 +20,7 @@ import { processRouterTemp } from './modules/temperature';
 import { initFanRpmHandler } from './modules/fanRpm';
 import { initScriptHbHandlers, checkScriptTimeouts, registerStatePlcCollection } from './modules/scriptHb';
 import { checkAllAlerts } from './modules/alerts';
+import { startChargeAggregator } from './modules/chargeAggregator';
 import { onMessage } from './mqtt';
 import { MOCK_STATIONS } from '../lib/mockData';
 
@@ -336,6 +337,13 @@ async function main() {
 
   console.log(`\n[init] ${stations.length} stations registered (seeding caches in background)\n`);
 
+  // Keep a mutable reference to the current station list so background jobs
+  // (charge aggregator, etc.) can always grab the latest after reloads.
+  let currentStations: StationConfig[] = stations;
+
+  // Daily charge aggregator — pre-computes _charge_daily for today + yesterday.
+  startChargeAggregator(() => currentStations);
+
   // 7. Timeout checker (every 30s)
   setInterval(() => {
     checkTimeouts();
@@ -386,6 +394,9 @@ async function main() {
 
       // Refresh _stations mirror so Next.js API stays up to date
       await syncStationsMeta(latest);
+
+      // Keep the shared reference fresh for background jobs.
+      currentStations = latest;
     } catch (err: any) {
       console.error('[init] reload error:', err.message);
     } finally {
