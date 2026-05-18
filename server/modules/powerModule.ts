@@ -75,12 +75,28 @@ export function registerPmStation(stationId: string, collectionName: string): vo
   }
 }
 
+// Backpressure cap — same pattern as meter.ts
+const pmPending = new Map<string, number>();
+const PM_PENDING_LIMIT = 50;
+let pmDropCount = 0;
+
 async function forwardPm(stationId: string, topic: string, payload: any): Promise<void> {
   const collectionName = pmCollections.get(stationId);
   if (!collectionName) {
     console.warn(`[pm] no collection configured for ${stationId} — skipping forward`);
     return;
   }
+
+  const pending = pmPending.get(stationId) || 0;
+  if (pending >= PM_PENDING_LIMIT) {
+    pmDropCount++;
+    if (pmDropCount % 100 === 1) {
+      console.warn(`[pm] backpressure: dropping write for ${stationId} (${pending} pending, ${pmDropCount} total drops)`);
+    }
+    return;
+  }
+  pmPending.set(stationId, pending + 1);
+
   try {
     const db = getDbByName(POWER_MODULE_DB);
     await db.collection(collectionName).insertOne({
@@ -92,6 +108,8 @@ async function forwardPm(stationId: string, topic: string, payload: any): Promis
     });
   } catch (err: any) {
     console.error(`[pm] forward error (${stationId} → ${collectionName}):`, err.message);
+  } finally {
+    pmPending.set(stationId, (pmPending.get(stationId) || 1) - 1);
   }
 }
 

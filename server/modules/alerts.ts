@@ -29,6 +29,28 @@ const SCRIPT_TIMEOUT_MS = 300_000;
 /** Active alerts — keyed by `${stationId}:${alertKey}` */
 const activeAlerts = new Set<string>();
 
+/**
+ * Repopulate activeAlerts from MongoDB on startup. Without this, every backend
+ * restart re-emits every existing alert (and re-broadcasts them to clients),
+ * because the in-memory dedupe set is empty.
+ */
+export async function loadActiveAlertsFromDb(): Promise<void> {
+  try {
+    const docs = await getStationDb().collection('_alerts')
+      .find({ acknowledged: false })
+      .toArray();
+    activeAlerts.clear();
+    for (const d of docs as any[]) {
+      if (d.stationId && d.alertKey) {
+        activeAlerts.add(`${d.stationId}:${d.alertKey}`);
+      }
+    }
+    console.log(`[alerts] restored ${activeAlerts.size} active alerts from MongoDB`);
+  } catch (err: any) {
+    console.error('[alerts] loadActiveAlertsFromDb failed:', err?.message || err);
+  }
+}
+
 interface AlertSpec {
   stationId:  string;
   type:       'temperature' | 'meter' | 'power' | 'script';
@@ -67,21 +89,13 @@ function clearAlert(stationId: string, alertKey: string): void {
   activeAlerts.delete(`${stationId}:${alertKey}`);
 }
 
-/** Load all station configs (for thresholds, expectedPmHead, etc.) */
+/** Load all station configs (for thresholds, expectedPmHead, etc.)
+ *  Reads from `_stations` mirror (populated by server/index.ts) — a single
+ *  fast query instead of scanning ~230 per-station collections every minute.
+ */
 async function loadStations(): Promise<any[]> {
   const db = getStationDb();
-  const cols = await db.listCollections().toArray();
-  const stations: any[] = [];
-  const seen = new Set<string>();
-  for (const col of cols) {
-    if (col.name.startsWith('_') || col.name.startsWith('system.')) continue;
-    const doc = await db.collection(col.name).findOne();
-    if (doc?.id && !seen.has(doc.id)) {
-      seen.add(doc.id);
-      stations.push(doc);
-    }
-  }
-  return stations;
+  return db.collection('_stations').find().toArray().catch(() => []);
 }
 
 // ── Individual checks ───────────────────────────────────────────

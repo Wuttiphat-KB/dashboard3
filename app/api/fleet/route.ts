@@ -174,10 +174,16 @@ export async function GET() {
       // Meter — from _meter_latest cache (backend keeps it warm)
       const meterDoc = meterByStation.get(st.id);
       const mp = meterDoc || {};
-      // Stalled detection is no longer per-request — set to false; the meter
-      // overview page should derive this from timestamp age instead.
-      const stalled1 = false;
-      const stalled2 = false;
+
+      // Stalled = the value hasn't changed for ≥ 2 days. The backend's meter
+      // module records meter{N}ChangedAt every time the value changes, so
+      // this stays correct across backend restarts (no warm-up window).
+      const STALL_MS = 2 * 86_400_000;
+      const m1ChangedTs = mp.meter1ChangedAt ? new Date(mp.meter1ChangedAt).getTime() : 0;
+      const m2ChangedTs = mp.meter2ChangedAt ? new Date(mp.meter2ChangedAt).getTime() : 0;
+      const numHeads    = Number(st.chargerHeads) || 2;
+      const stalled1 = m1ChangedTs > 0 && (now - m1ChangedTs) > STALL_MS;
+      const stalled2 = numHeads >= 2 && m2ChangedTs > 0 && (now - m2ChangedTs) > STALL_MS;
 
       // Power Module — from _pm_data cache
       const pmDoc = pmByStation.get(st.id);

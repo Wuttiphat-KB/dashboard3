@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint",
-    "server": "tsx server/index.ts",
-    "server:watch": "tsx watch server/index.ts",
+    "server": "tsx --max-old-space-size=8192 server/index.ts",
+    "server:watch": "tsx --max-old-space-size=8192 watch server/index.ts",
     "import:stations": "tsx scripts/importStations.ts",
     "create-indexes": "tsx scripts/createIndexes.ts"
   },

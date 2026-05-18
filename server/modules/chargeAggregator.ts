@@ -181,6 +181,53 @@ async function aggregateOneStation(st: StationLike, dateRange: { start: Date; en
   return docs.length;
 }
 
+/**
+ * Backfill ~N days of history on startup. Runs at most once per process
+ * boot — slow (3-10 min on this Mongo) but happens once. Uses lower
+ * concurrency than the regular tick so it doesn't crush an already-busy
+ * Mongo while the dashboard is loading.
+ */
+const BACKFILL_DAYS = 30;
+const BACKFILL_CONCURRENCY = 5;
+let backfillDone = false;
+
+async function backfillCharges(stations: StationLike[]): Promise<void> {
+  if (backfillDone) return;
+  if (inflight) {
+    // wait for the current 15-min tick to finish so we don't double-write
+    return;
+  }
+  inflight = true;
+  const tStart = Date.now();
+  try {
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startDate  = new Date(todayStart.getTime() - (BACKFILL_DAYS - 1) * 86_400_000);
+
+    console.log(`[chargeAgg] backfilling ${BACKFILL_DAYS} days (${startDate.toISOString().slice(0, 10)} → ${todayStart.toISOString().slice(0, 10)})...`);
+
+    let totalDocs = 0;
+    let done = 0;
+    for (let i = 0; i < stations.length; i += BACKFILL_CONCURRENCY) {
+      const batch = stations.slice(i, i + BACKFILL_CONCURRENCY);
+      const counts = await Promise.all(batch.map(st =>
+        aggregateOneStation(st, { start: startDate, end: todayStart }).catch(() => 0),
+      ));
+      totalDocs += counts.reduce((a, b) => a + b, 0);
+      done += batch.length;
+      if (done % 50 === 0 || done === stations.length) {
+        console.log(`[chargeAgg] backfill progress: ${done}/${stations.length} stations`);
+      }
+    }
+    backfillDone = true;
+    console.log(`[chargeAgg] backfill complete: ${stations.length} stations, ${totalDocs} meter docs in ${Math.round((Date.now() - tStart) / 1000)}s`);
+  } catch (err: any) {
+    console.error('[chargeAgg] backfill error:', err?.message || err);
+  } finally {
+    inflight = false;
+  }
+}
+
 /** Run the aggregator once. Reentrant — concurrent ticks skip. */
 async function runAggregation(stations: StationLike[]): Promise<void> {
   if (inflight) {
@@ -214,11 +261,39 @@ async function runAggregation(stations: StationLike[]): Promise<void> {
 }
 
 /**
- * Start the aggregator. Runs immediately on startup (so /api/charging works
- * the moment the page loads), then every 15 min.
+ * Backfill 30 days for a single station. Used when a new station is added
+ * via /config after the initial bulk backfill has already completed — the
+ * auto-reload loop calls this so the new station has historical data
+ * available without requiring a backend restart.
+ *
+ * Doesn't take the global `inflight` guard — per-station work is cheap and
+ * safe to run alongside the regular tick. aggregateOneStation is idempotent.
+ */
+export async function backfillStation(st: StationLike): Promise<void> {
+  try {
+    const now = new Date();
+    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const startDate  = new Date(todayStart.getTime() - (BACKFILL_DAYS - 1) * 86_400_000);
+    const tStart = Date.now();
+    const docs = await aggregateOneStation(st, { start: startDate, end: todayStart });
+    console.log(`[chargeAgg] backfilled ${st.id}: ${docs} docs in ${Date.now() - tStart}ms`);
+  } catch (err: any) {
+    console.error(`[chargeAgg] backfillStation(${st.id}) failed:`, err?.message || err);
+  }
+}
+
+/**
+ * Start the aggregator.
+ *  - 10s after startup: kick off a 30-day backfill (one-shot, background)
+ *  - After backfill: enter 15-min tick mode (today + yesterday only)
  */
 export function startChargeAggregator(getStations: () => StationLike[]): void {
-  // Initial run after 10s so MQTT + station registration have time to settle.
-  setTimeout(() => { runAggregation(getStations()); }, 10_000);
-  setInterval(() => { runAggregation(getStations()); }, TICK_MS);
+  // One-shot backfill: 30 days of history. Fires-and-forgets — slow but only
+  // happens once per process boot.
+  setTimeout(() => {
+    backfillCharges(getStations()).then(() => {
+      // Once backfill is done, start the regular 15-min tick
+      setInterval(() => { runAggregation(getStations()); }, TICK_MS);
+    });
+  }, 10_000);
 }

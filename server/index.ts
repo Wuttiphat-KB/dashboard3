@@ -19,8 +19,9 @@ import { initPowerModuleHandler, registerPmStation } from './modules/powerModule
 import { processRouterTemp } from './modules/temperature';
 import { initFanRpmHandler } from './modules/fanRpm';
 import { initScriptHbHandlers, checkScriptTimeouts, registerStatePlcCollection } from './modules/scriptHb';
-import { checkAllAlerts } from './modules/alerts';
-import { startChargeAggregator } from './modules/chargeAggregator';
+import { checkAllAlerts, loadActiveAlertsFromDb } from './modules/alerts';
+import { backfillMeterChangedAt } from './modules/meter';
+import { startChargeAggregator, backfillStation } from './modules/chargeAggregator';
 import { onMessage } from './mqtt';
 import { MOCK_STATIONS } from '../lib/mockData';
 
@@ -331,9 +332,17 @@ async function main() {
 
   // Fire-and-forget — populate _pm_data and _meter_latest in the background
   // so the dashboard has values even before MQTT messages arrive for each head.
-  seedPmAndMeterCaches(stations).catch(err =>
-    console.error('[init] seedPmAndMeterCaches failed:', err?.message || err),
+  seedPmAndMeterCaches(stations).then(() =>
+    // After seed completes, fill in meterChangedAt for stations missing it.
+    // Runs once — subsequent restarts find the field already populated and skip.
+    backfillMeterChangedAt(stations),
+  ).catch(err =>
+    console.error('[init] seed/backfill failed:', err?.message || err),
   );
+
+  // Restore active alert dedupe set from MongoDB so we don't re-broadcast
+  // every existing unacknowledged alert on restart.
+  await loadActiveAlertsFromDb();
 
   console.log(`\n[init] ${stations.length} stations registered (seeding caches in background)\n`);
 
@@ -374,6 +383,9 @@ async function main() {
           registerStationConfig(st);
           registeredConfigs.set(st.id, sig);
           console.log(`[init] + added: ${st.id} (${st.displayName || st.name})`);
+          // Fire-and-forget 30-day backfill so the new station gets historical
+          // charging data right away (no restart needed).
+          backfillStation(st).catch(() => {});
         } else if (oldSig !== sig) {
           // Topics changed — unregister + re-register
           unregisterStation(st.id);
@@ -407,6 +419,30 @@ async function main() {
   console.log('[init] Heartbeat timeout checker running (30s interval)');
   console.log('[init] Station auto-reload running (60s interval — picks up add/edit/delete)');
   console.log('[init] Backend ready\n');
+
+  // ── Memory monitor ──────────────────────────────────────────────
+  // Logs heap stats every 5 min so it's obvious when memory grows. If we
+  // ever approach the 8GB cap, exit cleanly so a process supervisor (Task
+  // Scheduler / PM2) can restart us — better than an OOM crash mid-write.
+  const SOFT_HEAP_LIMIT_MB = 6_500;  // exit before V8 hits 8192 hard limit
+  let lastMemLog = 0;
+  setInterval(() => {
+    const m = process.memoryUsage();
+    const heap = Math.round(m.heapUsed / 1024 / 1024);
+    const rss  = Math.round(m.rss      / 1024 / 1024);
+    const ext  = Math.round(m.external / 1024 / 1024);
+    const now = Date.now();
+    // Log every 5 min OR immediately if memory jumped > 200MB since last log
+    const shouldLog = (now - lastMemLog) >= 5 * 60_000;
+    if (shouldLog) {
+      console.log(`[mem] heap=${heap}MB rss=${rss}MB external=${ext}MB pid=${process.pid}`);
+      lastMemLog = now;
+    }
+    if (heap > SOFT_HEAP_LIMIT_MB) {
+      console.error(`[mem] FATAL: heap ${heap}MB exceeds soft limit ${SOFT_HEAP_LIMIT_MB}MB — exiting for clean restart`);
+      process.exit(1);
+    }
+  }, 30_000);
 }
 
 main().catch(err => {
