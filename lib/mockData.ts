@@ -152,6 +152,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 3, voltage: 419.4, current: 41,  powerKw: 17.20, prevVoltage: 408, prevCurrent: 41,  timestamp: m(3),  online: true },
     ],
     meterHistory: genMeterHistory(1, 100_264_730, 106_600_170),
+    meterLive: null,
     tempHistory:  genTempHistory(1, 80.0),
     fanData: {
       fans: {
@@ -202,6 +203,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
     ],
     // meter2 stopped 3 days ago
     meterHistory: genMeterHistory(2, 80_000_000, 95_000_000, 72),
+    meterLive: null,
     tempHistory:  genTempHistory(2, 79.0),
     fanData: {
       fans: {
@@ -250,6 +252,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 0, voltage: 0, current: 0, powerKw: 0, prevVoltage: 0, prevCurrent: 0, timestamp: h(7), online: false },
     ],
     meterHistory: genMeterHistory(3, 50_000_000, 60_000_000, 200),
+    meterLive: null,
     tempHistory:  genTempHistory(3, 35.0),
     fanData: {
       fans: {
@@ -296,6 +299,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 3, voltage: 418.5, current: 135, powerKw: 56.5, prevVoltage: 412, prevCurrent: 130, timestamp: m(2), online: true },
     ],
     meterHistory: genMeterHistory(4, 120_000_000, 118_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(4, 75.0),
     fanData: {
       fans: { 'FAN 1': 5420, 'FAN 2': 5390, 'FAN 3': 5410, 'FAN 4': 5430, 'FAN 5': 5400, 'FAN 6': 5380, 'FAN 7': 5450, 'FAN 8': 5370 },
@@ -341,6 +345,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 2, voltage: 416.0, current: 122, powerKw: 50.8, prevVoltage: 412, prevCurrent: 120, timestamp: m(5), online: true },
     ],
     meterHistory: genMeterHistory(5, 88_000_000, 92_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(5, 84.0),
     fanData: {
       fans: { 'FAN 1': 5300, 'FAN 2': 5280, 'FAN 3': 0, 'FAN 4': 5320, 'FAN 5': 5290, 'FAN 6': 5310, 'FAN 7': 0, 'FAN 8': 5270 },
@@ -385,6 +390,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 2, voltage: 413.0, current: 88,  powerKw: 36.3, prevVoltage: 410, prevCurrent: 85,  timestamp: m(2), online: true },
     ],
     meterHistory: genMeterHistory(6, 75_000_000, 80_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(6, 72.0),
     fanData: {
       fans: { 'FAN 1': 5350, 'FAN 2': 5320, 'FAN 3': 5360, 'FAN 4': 5340, 'FAN 5': 5330, 'FAN 6': 5310, 'FAN 7': 5370, 'FAN 8': 5300 },
@@ -430,6 +436,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 3, voltage: 419.0, current: 140, powerKw: 58.7, prevVoltage: 414, prevCurrent: 138, timestamp: m(4), online: true  },
     ],
     meterHistory: genMeterHistory(7, 60_000_000, 65_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(7, 76.0),
     fanData: {
       fans: { 'FAN 1': 5250, 'FAN 2': 5230, 'FAN 3': 5270, 'FAN 4': 5240, 'FAN 5': 5260, 'FAN 6': 5220, 'FAN 7': 5280, 'FAN 8': 0 },
@@ -473,6 +480,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 0, voltage: 0, current: 0, powerKw: 0, prevVoltage: 0, prevCurrent: 0, timestamp: h(10), online: false },
     ],
     meterHistory: genMeterHistory(8, 40_000_000, 45_000_000, 200),
+    meterLive: null,
     tempHistory:  genTempHistory(8, 30.0),
     fanData: {
       fans: { 'FAN 1': 0, 'FAN 2': 0, 'FAN 3': 0, 'FAN 4': 0, 'FAN 5': 0, 'FAN 6': 0, 'FAN 7': 0, 'FAN 8': 0 },
@@ -515,6 +523,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 3, voltage: 420.5, current: 143, powerKw: 60.2, prevVoltage: 415, prevCurrent: 141, timestamp: m(2), online: true },
     ],
     meterHistory: genMeterHistory(9, 55_000_000, 58_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(9, 73.0),
     fanData: {
       fans: { 'FAN 1': 5500, 'FAN 2': 5480, 'FAN 3': 5510, 'FAN 4': 5490, 'FAN 5': 5470, 'FAN 6': 5520, 'FAN 7': 5460, 'FAN 8': 5530 },
@@ -560,6 +569,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 3, voltage: 417.5, current: 128, powerKw: 53.4, prevVoltage: 412, prevCurrent: 125, timestamp: m(3), online: true },
     ],
     meterHistory: genMeterHistory(10, 90_000_000, 95_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(10, 71.0),
     fanData: {
       fans: { 'FAN 1': 5440, 'FAN 2': 5420, 'FAN 3': 5460, 'FAN 4': 5410, 'FAN 5': 5450, 'FAN 6': 5430, 'FAN 7': 5470, 'FAN 8': 5400 },
@@ -605,6 +615,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 2, voltage: 413.5, current: 108, powerKw: 44.7, prevVoltage: 409, prevCurrent: 106, timestamp: m(4), online: true },
     ],
     meterHistory: genMeterHistory(11, 68_000_000, 72_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(11, 74.0),
     fanData: {
       fans: { 'FAN 1': 5380, 'FAN 2': 5360, 'FAN 3': 5400, 'FAN 4': 5370, 'FAN 5': 5390, 'FAN 6': 5350, 'FAN 7': 5410, 'FAN 8': 5340 },
@@ -649,6 +660,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 0, voltage: 0,     current: 0,  powerKw: 0,    prevVoltage: 0,   prevCurrent: 0,  timestamp: h(4), online: false },
     ],
     meterHistory: genMeterHistory(12, 30_000_000, 35_000_000, 72),
+    meterLive: null,
     tempHistory:  genTempHistory(12, 78.0),
     fanData: {
       fans: { 'FAN 1': 5100, 'FAN 2': 5080, 'FAN 3': 5120, 'FAN 4': 0, 'FAN 5': 5090, 'FAN 6': 5110, 'FAN 7': 5070, 'FAN 8': 5130 },
@@ -692,6 +704,7 @@ export const MOCK_DASHBOARD: Record<string, StationDashboardData> = {
       { head: 2, pmCount: 3, voltage: 421.5, current: 146, powerKw: 61.6, prevVoltage: 417, prevCurrent: 144, timestamp: m(2), online: true },
     ],
     meterHistory: genMeterHistory(13, 110_000_000, 115_000_000),
+    meterLive: null,
     tempHistory:  genTempHistory(13, 70.0),
     fanData: {
       fans: { 'FAN 1': 5550, 'FAN 2': 5530, 'FAN 3': 5560, 'FAN 4': 5520, 'FAN 5': 5540, 'FAN 6': 5510, 'FAN 7': 5570, 'FAN 8': 5500 },
