@@ -12,7 +12,7 @@ interface DailyAgg {
   updatedAt: string | null;
 }
 
-type Preset = '7d' | '30d' | 'month' | 'lastmonth' | 'custom';
+type Preset = '7d' | '30d' | 'month';
 
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -28,20 +28,11 @@ function startOfMonth(d = new Date()): string {
   return toISODate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)));
 }
 
-function endOfMonth(d = new Date()): string {
-  return toISODate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)));
-}
-
 function presetRange(p: Preset): { start: string; end: string } {
   const today = toISODate(new Date());
-  if (p === '7d')        return { start: daysAgo(6), end: today };
-  if (p === '30d')       return { start: daysAgo(29), end: today };
-  if (p === 'month')     return { start: startOfMonth(),      end: today };
-  if (p === 'lastmonth') {
-    const lastMonth = new Date();
-    lastMonth.setUTCDate(0); // last day of prev month
-    return { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) };
-  }
+  if (p === '7d')    return { start: daysAgo(6),    end: today };
+  if (p === '30d')   return { start: daysAgo(29),   end: today };
+  if (p === 'month') return { start: startOfMonth(), end: today };
   return { start: daysAgo(6), end: today };
 }
 
@@ -49,8 +40,6 @@ export default function ChargingReportPage() {
   const { stations } = useStations();
   const [stationId, setStationId] = useState<string>('');
   const [preset, setPreset] = useState<Preset>('7d');
-  const [customStart, setCustomStart] = useState<string>(daysAgo(6));
-  const [customEnd, setCustomEnd]     = useState<string>(toISODate(new Date()));
   const [data, setData] = useState<DailyAgg[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,10 +51,7 @@ export default function ChargingReportPage() {
     }
   }, [stations, stationId]);
 
-  const range = useMemo(() => {
-    if (preset === 'custom') return { start: customStart, end: customEnd };
-    return presetRange(preset);
-  }, [preset, customStart, customEnd]);
+  const range = useMemo(() => presetRange(preset), [preset]);
 
   // Fetch data when station or range changes
   useEffect(() => {
@@ -139,11 +125,9 @@ export default function ChargingReportPage() {
             <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Range</label>
             <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
               {([
-                { id: '7d',        label: '7 days'     },
-                { id: '30d',       label: '30 days'    },
-                { id: 'month',     label: 'This month' },
-                { id: 'lastmonth', label: 'Last month' },
-                { id: 'custom',    label: 'Custom'     },
+                { id: '7d',    label: '7 days'     },
+                { id: '30d',   label: '30 days'    },
+                { id: 'month', label: 'This month' },
               ] as { id: Preset; label: string }[]).map((p, i, arr) => (
                 <button
                   key={p.id}
@@ -162,20 +146,6 @@ export default function ChargingReportPage() {
               ))}
             </div>
           </div>
-
-          {/* Custom date inputs */}
-          {preset === 'custom' && (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Start</label>
-                <input type="date" className="input" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ fontSize: 12 }} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>End</label>
-                <input type="date" className="input" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ fontSize: 12 }} />
-              </div>
-            </>
-          )}
 
           <div style={{ flex: 1, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' }}>
             {selectedStation && (

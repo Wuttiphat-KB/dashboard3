@@ -78,6 +78,17 @@ function mapApiToDashboard(stationId: string, raw: any): StationDashboardData {
     timestamp1: m.timestamp1 || '', timestamp2: m.timestamp2 || '', timestamp: m.timestamp || '',
   }));
 
+  const meterLive = raw.meterLive ? {
+    meter1:          Number(raw.meterLive.meter1 ?? 0),
+    meter2:          Number(raw.meterLive.meter2 ?? 0),
+    timestamp1:      raw.meterLive.timestamp1 || '',
+    timestamp2:      raw.meterLive.timestamp2 || '',
+    timestamp:       raw.meterLive.timestamp  || '',
+    meter1ChangedAt: raw.meterLive.meter1ChangedAt || null,
+    meter2ChangedAt: raw.meterLive.meter2ChangedAt || null,
+    updatedAt:       raw.meterLive.updatedAt || null,
+  } : null;
+
   const r = raw.routerData || {};
   const routerData: RouterData = {
     connstate: r.connstate || 'Unknown',
@@ -154,6 +165,6 @@ function mapApiToDashboard(stationId: string, raw: any): StationDashboardData {
       { head: 1, pmCount: 0, voltage: 0, current: 0, powerKw: 0, prevVoltage: 0, prevCurrent: 0, timestamp: '', online: false },
       { head: 2, pmCount: 0, voltage: 0, current: 0, powerKw: 0, prevVoltage: 0, prevCurrent: 0, timestamp: '', online: false },
     ],
-    meterHistory, tempHistory: [], fanData, scripts, plcData,
+    meterHistory, meterLive, tempHistory: [], fanData, scripts, plcData,
   };
 }

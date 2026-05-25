@@ -93,13 +93,14 @@ export async function GET(
         .catch(() => null),
     ]);
 
-    // Live device status + router data + script status + plc payload + fan data from backend
-    const [liveStatuses, routerLive, scriptStatuses, plcLive, fanLive] = await Promise.all([
+    // Live device status + router data + script status + plc payload + fan data + meter latest from backend
+    const [liveStatuses, routerLive, scriptStatuses, plcLive, fanLive, meterLive] = await Promise.all([
       client.db(STATION_DB).collection('_device_status').find({ stationId: id }).toArray().catch(() => []),
       client.db(STATION_DB).collection('_router_data').findOne({ stationId: id }).catch(() => null),
       client.db(STATION_DB).collection('_script_status').find({ stationId: id }).toArray().catch(() => []),
       client.db(STATION_DB).collection('_plc_data').findOne({ stationId: id }).catch(() => null),
       client.db(STATION_DB).collection('_fan_data').findOne({ stationId: id }).catch(() => null),
+      client.db(STATION_DB).collection('_meter_latest').findOne({ stationId: id }).catch(() => null),
     ]);
     const liveHb = liveStatuses.find((d: any) => d.device === 'heartbeat');
     const liveRt = liveStatuses.find((d: any) => d.device === 'router');
@@ -226,6 +227,18 @@ export async function GET(
         lastSeen: pi5Timestamp,
       },
       meterHistory,
+      meterLive: meterLive ? {
+        meter1:           Number((meterLive as any).meter1 ?? 0),
+        meter2:           Number((meterLive as any).meter2 ?? 0),
+        timestamp1:       (meterLive as any).timestamp1 || '',
+        timestamp2:       (meterLive as any).timestamp2 || '',
+        timestamp:        (meterLive as any).timestamp  || '',
+        // Persistent timestamps — last time each meter value actually changed.
+        // Kept across backend restarts because they live in MongoDB.
+        meter1ChangedAt:  tsToString((meterLive as any).meter1ChangedAt) || null,
+        meter2ChangedAt:  tsToString((meterLive as any).meter2ChangedAt) || null,
+        updatedAt:        tsToString((meterLive as any).updatedAt) || null,
+      } : null,
       powerModuleHeads,
       routerData: {
         online: rtOnline,

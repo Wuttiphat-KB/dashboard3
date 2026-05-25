@@ -82,7 +82,9 @@ function HeartbeatCard({ station, data }: { station: Station; data: StationDashb
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <span className={`led ${hb.online ? 'led-ok led-pulse' : 'led-error'}`} />
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{hb.name}</span>
-                {hb.key === 'router' && hb.connstate && (
+                {/* Only show connstate when the router is actually online — otherwise the
+                    cached "Connected" string sticks around days after the device went down. */}
+                {hb.key === 'router' && hb.online && hb.connstate && (
                   <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{hb.connstate}</span>
                 )}
               </div>
@@ -424,25 +426,33 @@ function FanRPMCard({ station, data }: { station: Station; data: StationDashboar
         );
       })()}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {/* Fans in 2 columns — odd FAN numbers on the left, even on the right.
+          No more bar gauge: just FAN name + big RPM number for readability. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 14px' }}>
         {entries.map(([name, rpm]) => {
-          const pct  = Math.min((rpm / FAN_MAX) * 100, 100);
+          const pct    = Math.min((rpm / FAN_MAX) * 100, 100);
           const isIdle = rpm === 0;
-          const fc   = isIdle ? 'var(--text-muted)' : pct < 50 ? 'var(--warn)' : 'var(--ok)';
+          const fc     = isIdle ? 'var(--text-muted)' : pct < 50 ? 'var(--warn-text)' : 'var(--ok-text)';
+          const n      = parseInt(name.replace('FAN ', '')) || 1;
+          // Odd → left column (1), even → right column (2)
+          const col    = (n % 2 === 1) ? 1 : 2;
           return (
-            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 38, flexShrink: 0 }}>{name}</span>
-              <div className="gauge-track" style={{ flex: 1, height: 5 }}>
-                <div className="gauge-fill" style={{ width: `${pct}%`, background: fc, height: '100%' }} />
-              </div>
-              <span style={{ fontSize: 11, color: fc, width: 64, textAlign: 'right', fontWeight: 600, flexShrink: 0, fontFamily: 'monospace' }}>
-                {isIdle ? '0' : `${(rpm / 1000).toFixed(1)}k`}
+            <div key={name} style={{
+              gridColumn: col,
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '4px 8px',
+              background: 'var(--bg-elevated)',
+              borderRadius: 6,
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>{name}</span>
+              <span style={{ fontSize: 16, fontWeight: 800, color: fc, fontFamily: 'monospace', lineHeight: 1 }}>
+                {isIdle ? '0' : rpm.toFixed(0)}
               </span>
             </div>
           );
         })}
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
         {runningN}/{entries.length} fans running
       </div>
     </Shell>
@@ -684,14 +694,8 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
       ];
     }
     if (type === 'fanrpm') {
-      const allFans   = allData.flatMap(x => Object.values(x.data.fanData.fans));
-      const idleCnt   = allFans.filter(r => r === 0).length;
-      const runCnt    = allFans.length - idleCnt;
-      return [
-        { label: 'Total Fans',   value: allFans.length,  color: 'var(--text-primary)' },
-        { label: 'Idle (0 RPM)', value: idleCnt,         color: idleCnt > 0 ? 'var(--text-secondary)' : 'var(--text-muted)' },
-        { label: 'Running',      value: runCnt,          color: runCnt > 0 ? 'var(--ok)' : 'var(--text-muted)' },
-      ];
+      // Top stats hidden by request — fans-running counter on each card is enough.
+      return [];
     }
     if (type === 'scripts') {
       const all = allData.flatMap(x => x.data.scripts);

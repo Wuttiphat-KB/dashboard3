@@ -186,6 +186,21 @@ export interface Alert {
   acknowledged: boolean;
 }
 
+// ── Persistent meter status (from Station DB _meter_latest) ───────────────
+// The backend updates `meterNChangedAt` only when the meter value actually
+// changes, so this survives backend restarts and lets the frontend show the
+// real "last increase" timestamp instead of the latest received MQTT msg.
+export interface MeterLive {
+  meter1: number;
+  meter2: number;
+  timestamp1: string;
+  timestamp2: string;
+  timestamp:  string;
+  meter1ChangedAt: string | null;
+  meter2ChangedAt: string | null;
+  updatedAt: string | null;
+}
+
 // ── Station dashboard data (all panels combined) ───────────────────────────────
 export interface StationDashboardData {
   stationId:         string;
@@ -193,6 +208,7 @@ export interface StationDashboardData {
   routerData:        RouterData;          // full router payload (temp, signal)
   powerModuleHeads:  PowerModuleHead[];   // one entry per charger head
   meterHistory:      MeterSnapshot[];     // newest last (for charts + LED)
+  meterLive:         MeterLive | null;    // persistent latest + lastChangedAt timestamps
   tempHistory:       TempReading[];       // router temp history for chart
   fanData:           FanSnapshot;         // latest 8-fan snapshot
   scripts:           MqttScript[];

@@ -37,9 +37,9 @@ function FanCard({ name, rpm }: { name: string; rpm: number }) {
         {/* Center text — always show RPM */}
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <span style={{ fontSize: 14, fontWeight: 800, color, lineHeight: 1 }}>
-            {(rpm / 1000).toFixed(1)}
+            {rpm.toFixed(0)}
           </span>
-          <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>k RPM</span>
+          <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>RPM</span>
         </div>
       </div>
 
@@ -63,7 +63,7 @@ function FanCard({ name, rpm }: { name: string; rpm: number }) {
           <div className="gauge-fill" style={{ width: `${pct}%`, background: color }} />
         </div>
         <div style={{ fontSize: 9, color: 'var(--text-muted)', textAlign: 'center', marginTop: 2 }}>
-          {pct.toFixed(0)}% of {(FAN_MAX_RPM / 1000).toFixed(0)}k max
+          {pct.toFixed(0)}% of {FAN_MAX_RPM} max
         </div>
       </div>
     </div>
@@ -89,7 +89,7 @@ export default function FanRPMPanel({ fanData, stationId }: Props) {
           { label: 'Fans Running', value: `${runningFans.length}/${entries.length}`, color: runningFans.length > 0 ? 'var(--ok)' : 'var(--text-muted)' },
           { label: 'Fans Idle',    value: `${idleFans.length}`,                      color: idleFans.length > 0 ? 'var(--text-secondary)' : 'var(--text-muted)' },
           { label: 'Avg RPM',      value: `${avgRPM.toFixed(0)}`,                    color: 'var(--info)' },
-          { label: 'Total RPM',    value: `${(totalRPM / 1000).toFixed(1)}k`,        color: 'var(--text-secondary)' },
+          { label: 'Total RPM',    value: `${totalRPM.toFixed(0)}`,                  color: 'var(--text-secondary)' },
         ].map(s => (
           <div key={s.label} className="card" style={{ padding: '0.875rem' }}>
             <div className="stat-value" style={{ color: s.color, fontSize: 20 }}>{s.value}</div>

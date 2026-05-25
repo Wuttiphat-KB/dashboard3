@@ -166,7 +166,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
           expectedPmHead1={station.expectedPmHead1 ?? station.expectedPmPerHead}
           expectedPmHead2={station.expectedPmHead2 ?? station.expectedPmPerHead}
           plcData={data.plcData} />}
-        {tab === 'meter'       && <MeterPanel        history={data.meterHistory}   stationId={station.id} chargerHeads={station.chargerHeads} />}
+        {tab === 'meter'       && <MeterPanel        history={data.meterHistory}   meterLive={data.meterLive} stationId={station.id} chargerHeads={station.chargerHeads} />}
         {tab === 'temperature' && <TempPanel         routerData={data.routerData}  tempHistory={data.tempHistory} stationId={station.id} />}
         {tab === 'fanrpm'      && <FanRPMPanel       fanData={data.fanData}        stationId={station.id} />}
         {tab === 'scripts'     && <MqttScriptPanel   scripts={data.scripts}        stationId={station.id} />}

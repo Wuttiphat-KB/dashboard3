@@ -1,15 +1,18 @@
 'use client';
 
-import { MeterSnapshot, METER_MAX_KWH } from '@/lib/types';
+import { MeterSnapshot, MeterLive, METER_MAX_KWH } from '@/lib/types';
 import { getMeterLed } from '@/lib/mockData';
 import { fmtTs, timeSince } from '@/lib/formatTime';
 import LineChart from './ui/LineChart';
 
 interface Props {
   history: MeterSnapshot[];
+  meterLive?: MeterLive | null;
   stationId: string;
   chargerHeads?: number;
 }
+
+const STALL_MS = 2 * 86_400_000;
 
 const WH_TO_KWH = (wh: number) => wh / 1000;
 const fmtKwh    = (wh: number) => {
@@ -98,7 +101,7 @@ function MeterGauge({ valueWh, label, led, stalled, timestamp }: {
         border: '1px solid var(--border-subtle)',
       }}>
         <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>
-          Last update (MongoDB)
+          Last value increase
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-secondary)' }}>
@@ -113,13 +116,31 @@ function MeterGauge({ valueWh, label, led, stalled, timestamp }: {
   );
 }
 
-export default function MeterPanel({ history, stationId, chargerHeads = 2 }: Props) {
+export default function MeterPanel({ history, meterLive, stationId, chargerHeads = 2 }: Props) {
   const latest = history[history.length - 1];
   const oldest = history[0];
   const showM2 = chargerHeads >= 2;
 
-  const led1 = getMeterLed(history, 1);
-  const led2 = getMeterLed(history, 2);
+  // Prefer the persistent "last increased" timestamps from `_meter_latest`
+  // (kept across backend restarts). Fall back to the chart-history-based
+  // LED only if the live cache hasn't been populated yet.
+  const now = Date.now();
+  const stallFromChangedAt = (ts: string | null | undefined): boolean | null => {
+    if (!ts) return null;
+    const t = new Date(ts).getTime();
+    if (isNaN(t)) return null;
+    return (now - t) >= STALL_MS;
+  };
+  const stalled1FromLive = stallFromChangedAt(meterLive?.meter1ChangedAt);
+  const stalled2FromLive = stallFromChangedAt(meterLive?.meter2ChangedAt);
+
+  const led1 = stalled1FromLive == null ? getMeterLed(history, 1) : (stalled1FromLive ? 'error' : 'ok');
+  const led2 = stalled2FromLive == null ? getMeterLed(history, 2) : (stalled2FromLive ? 'error' : 'ok');
+
+  // Timestamp shown on each gauge = when value last actually changed (persistent),
+  // falling back to the latest received MQTT timestamp if not available.
+  const ts1 = meterLive?.meter1ChangedAt || latest?.timestamp1 || '';
+  const ts2 = meterLive?.meter2ChangedAt || latest?.timestamp2 || '';
 
   const delta1Wh = latest && oldest ? latest.meter1Wh - oldest.meter1Wh : 0;
   const delta2Wh = latest && oldest ? latest.meter2Wh - oldest.meter2Wh : 0;
@@ -134,19 +155,19 @@ export default function MeterPanel({ history, stationId, chargerHeads = 2 }: Pro
       {/* Meter gauges */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
         <MeterGauge
-          valueWh={latest?.meter1Wh ?? 0}
+          valueWh={meterLive?.meter1 ?? latest?.meter1Wh ?? 0}
           label={m1Label}
           led={led1}
           stalled={led1 === 'error'}
-          timestamp={latest?.timestamp1 ?? new Date(0).toISOString()}
+          timestamp={ts1 || new Date(0).toISOString()}
         />
         {showM2 && (
           <MeterGauge
-            valueWh={latest?.meter2Wh ?? 0}
+            valueWh={meterLive?.meter2 ?? latest?.meter2Wh ?? 0}
             label="Meter 2 (Head 2)"
             led={led2}
             stalled={led2 === 'error'}
-            timestamp={latest?.timestamp2 ?? new Date(0).toISOString()}
+            timestamp={ts2 || new Date(0).toISOString()}
           />
         )}
       </div>
@@ -169,8 +190,8 @@ export default function MeterPanel({ history, stationId, chargerHeads = 2 }: Pro
       {/* Charts */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1rem' }}>
         {([
-          { data: chartData1, led: led1, label: showM2 ? 'Meter 1 (Head 1) — 48 h (kWh)' : 'Meter — 48 h (kWh)', ts: latest?.timestamp1, show: true },
-          { data: chartData2, led: led2, label: 'Meter 2 (Head 2) — 48 h (kWh)', ts: latest?.timestamp2, show: showM2 },
+          { data: chartData1, led: led1, label: showM2 ? 'Meter 1 (Head 1) — 48 h (kWh)' : 'Meter — 48 h (kWh)', ts: ts1, show: true },
+          { data: chartData2, led: led2, label: 'Meter 2 (Head 2) — 48 h (kWh)', ts: ts2, show: showM2 },
         ] as const).filter(m => m.show).map((m) => (
           <div key={m.label} className="card">
             <div className="card-header">
@@ -183,7 +204,7 @@ export default function MeterPanel({ history, stationId, chargerHeads = 2 }: Pro
             <LineChart data={m.data} height={140} color={m.led === 'ok' ? 'var(--ok)' : 'var(--error)'} />
             {m.ts && (
               <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                Latest: {fmtTs(m.ts)} · {timeSince(m.ts)}
+                Last increase: {fmtTs(m.ts)} · {timeSince(m.ts)}
               </div>
             )}
           </div>
