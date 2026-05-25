@@ -274,12 +274,6 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
                 {theme === 'dark' ? 'DARK' : 'LIGHT'}
               </span>
             </button>
-
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.8 }}>
-              <div style={{ color: 'var(--text-secondary)', fontWeight: 600, fontSize: 11 }}>EV Monitor v3</div>
-              <div>Mock data mode</div>
-              <div>Next.js 16 + TypeScript</div>
-            </div>
           </div>
         )}
 

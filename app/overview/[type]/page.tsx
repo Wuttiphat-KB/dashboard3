@@ -539,6 +539,7 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
         meter1Wh: fl.meter.meter1Wh, meter2Wh: fl.meter.meter2Wh,
         timestamp1: fl.meter.timestamp1, timestamp2: fl.meter.timestamp2, timestamp: fl.meter.timestamp1,
       }] : [],
+      meterLive: null,
       tempHistory: [],
       fanData: {
         fans: fl.fan?.fans || {},
