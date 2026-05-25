@@ -136,15 +136,20 @@ export default function FleetOverview() {
   }, [fleet, search]);
 
   // Sort: A-Z by displayName, or Problems First (offline → degraded → online)
+  const byDisplayName = (a: FleetStation, b: FleetStation) => {
+    const an = a.station.displayName || a.station.name || a.station.id;
+    const bn = b.station.displayName || b.station.name || b.station.id;
+    return an.localeCompare(bn, undefined, { sensitivity: 'base', numeric: true });
+  };
   const sorted = useMemo(() => {
     const arr = [...filtered];
     if (sort === 'az') {
-      arr.sort((a, b) => (a.station.displayName || a.station.id).localeCompare(b.station.displayName || b.station.id));
+      arr.sort(byDisplayName);
     } else {
       arr.sort((a, b) => {
         const d = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
         if (d !== 0) return d;
-        return (a.station.displayName || a.station.id).localeCompare(b.station.displayName || b.station.id);
+        return byDisplayName(a, b);
       });
     }
     return arr;

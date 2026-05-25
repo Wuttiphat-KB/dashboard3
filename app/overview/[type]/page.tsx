@@ -560,7 +560,11 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
     // Attach stalled meta from fleet API (used by MeterCard)
     (data as any).__meterMeta = { stalled1: fl.meter.stalled1, stalled2: fl.meter.stalled2 };
     return { station, data };
-  }).sort((a, b) => a.station.id.localeCompare(b.station.id));
+  }).sort((a, b) => {
+    const an = a.station.displayName || a.station.name || a.station.id;
+    const bn = b.station.displayName || b.station.name || b.station.id;
+    return an.localeCompare(bn, undefined, { sensitivity: 'base', numeric: true });
+  });
 
   // Search filter — guard against missing fields from API
   const filtered = search.trim() === ''
