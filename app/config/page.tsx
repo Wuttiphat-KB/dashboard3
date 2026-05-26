@@ -157,36 +157,80 @@ function ConfigPageInner() {
     setForm(f => ({ ...f, telegram: { ...f.telegram, [key]: val } }));
 
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Mongo collection name rules — must match server-side VALID_NAME_RE
+  const NAME_RE = /^[A-Za-z0-9_-]{1,80}$/;
 
   const handleSave = async () => {
-    if (!form.name.trim()) return;
-    setSaving(true);
-
-    let stationDoc: Station;
-    if (mode === 'edit' && form.id) {
-      stationDoc = { ...form, id: form.id, createdAt: stations.find(s => s.id === form.id)?.createdAt ?? new Date().toISOString() } as Station;
-      setStations(prev => prev.map(s => s.id === form.id ? stationDoc : s));
-    } else {
-      stationDoc = {
-        ...form,
-        id:        form.name.toUpperCase().replace(/\s+/g, '-').replace(/[^A-Z0-9-]/g, ''),
-        createdAt: new Date().toISOString(),
-      };
-      setStations(prev => [...prev, stationDoc]);
+    setSaveError(null);
+    const trimmedName = form.name.trim();
+    if (!trimmedName) {
+      setSaveError('Station name is required');
+      return;
+    }
+    if (!NAME_RE.test(trimmedName)) {
+      setSaveError('Station name may only contain letters, digits, _ or - (no spaces or symbols)');
+      return;
     }
 
-    // Save to MongoDB (db=Station, collection=station.name)
+    // Build the doc that will be saved.
+    let stationDoc: Station;
+    if (mode === 'edit' && form.id) {
+      stationDoc = {
+        ...form,
+        name: trimmedName,
+        id: form.id,
+        createdAt: stations.find(s => s.id === form.id)?.createdAt ?? new Date().toISOString(),
+      } as Station;
+    } else {
+      const newId = trimmedName.toUpperCase().replace(/\s+/g, '-').replace(/[^A-Z0-9-]/g, '');
+      if (!newId) {
+        setSaveError('Cannot derive station id from the given name');
+        return;
+      }
+      // Block accidental overwrite when adding.
+      const dupId   = stations.find(s => s.id === newId);
+      const dupName = stations.find(s => s.name === trimmedName);
+      if (dupId)   { setSaveError(`A station with id "${newId}" already exists. Use Edit instead.`); return; }
+      if (dupName) { setSaveError(`A station with name "${trimmedName}" already exists.`); return; }
+      stationDoc = {
+        ...form,
+        name: trimmedName,
+        id: newId,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    setSaving(true);
+    let ok = false;
     try {
-      await fetch('/api/stations/save', {
+      const res = await fetch('/api/stations/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(stationDoc),
       });
-    } catch (err) {
-      console.error('Failed to save to MongoDB:', err);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({} as any));
+        setSaveError(body?.error || `Save failed: HTTP ${res.status}`);
+      } else {
+        ok = true;
+      }
+    } catch (err: any) {
+      setSaveError(`Network error: ${err?.message || err}`);
+    } finally {
+      setSaving(false);
     }
 
-    setSaving(false);
+    if (!ok) return;
+
+    // Only mutate local state AFTER server confirms — no rollback bugs.
+    if (mode === 'edit' && form.id) {
+      setStations(prev => prev.map(s => s.id === form.id ? stationDoc : s));
+    } else {
+      setStations(prev => [...prev, stationDoc]);
+    }
+
     setSaved(true);
     setTimeout(() => { setSaved(false); goToList(); }, 1500);
   };
@@ -560,12 +604,25 @@ function ConfigPageInner() {
       </div>
 
       {/* Save */}
-      <div style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <button className="btn btn-primary" onClick={handleSave}
           disabled={!form.name.trim() || saving} style={{ opacity: form.name.trim() && !saving ? 1 : 0.5 }}>
           {saving ? 'Saving...' : `✓ ${mode === 'add' ? 'Add Station' : 'Save Changes'}`}
         </button>
         <button className="btn btn-secondary" onClick={goToList}>Cancel</button>
+        {saveError && (
+          <span style={{
+            padding: '6px 12px',
+            background: 'var(--error-bg)',
+            border: '1px solid var(--error)',
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--error-text)',
+            fontSize: 12,
+            fontWeight: 600,
+          }}>
+            ⚠ {saveError}
+          </span>
+        )}
         {saved && (
           <span className="badge badge-ok">
             <span className="led led-ok" />
