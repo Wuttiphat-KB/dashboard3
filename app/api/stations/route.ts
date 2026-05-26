@@ -34,23 +34,32 @@ async function loadStations(client: MongoClient): Promise<any[]> {
       // fall through to slow scan
     }
 
-    // SLOW FALLBACK: scan per-station collections
+    // SLOW FALLBACK: scan per-station collections — pick canonical doc per id.
     const cols = await db.listCollections().toArray();
     const targets = cols.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
-    const out: any[] = [];
-    const seenIds = new Set<string>();
+    interface Candidate { doc: any; updatedAt: number; canonical: boolean; }
+    const bestById = new Map<string, Candidate>();
     for (let i = 0; i < targets.length; i += FINDONE_CONCURRENCY) {
       const batch = targets.slice(i, i + FINDONE_CONCURRENCY);
-      const docs = await Promise.all(
-        batch.map(col => db.collection(col.name).findOne().catch(() => null)),
+      const results = await Promise.all(
+        batch.map(async col => ({ col: col.name, doc: await db.collection(col.name).findOne().catch(() => null) })),
       );
-      for (const doc of docs) {
-        if (doc && doc.id && !seenIds.has(doc.id)) {
-          seenIds.add(doc.id);
-          out.push(doc);
+      for (const { col, doc } of results) {
+        if (!doc || !doc.id) continue;
+        const cand: Candidate = {
+          doc,
+          updatedAt: new Date(doc.updatedAt || 0).getTime(),
+          canonical: doc.name === col,
+        };
+        const existing = bestById.get(doc.id);
+        if (!existing
+          || (cand.canonical && !existing.canonical)
+          || (cand.canonical === existing.canonical && cand.updatedAt > existing.updatedAt)) {
+          bestById.set(doc.id, cand);
         }
       }
     }
+    const out = [...bestById.values()].map(c => c.doc);
     cachedStations = out;
     cachedStationsAt = Date.now();
     return out;

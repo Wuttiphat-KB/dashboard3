@@ -72,23 +72,44 @@ async function loadStationsFromMongo(opts?: { forceSlowScan?: boolean }): Promis
     }
 
     // SLOW PATH: list per-station collections, findOne each, in parallel batches.
+    //
+    // Renaming a station via /config writes the NEW doc to `Station.{newName}`
+    // but leaves the old `Station.{oldName}` collection intact. Both contain a
+    // doc with the same `id`, so we have to pick the canonical one or restart
+    // will randomly pick the orphan (and revert displayName / topics).
+    //
+    // Rules, in order of priority:
+    //   1. Prefer the doc whose `name` equals its collection name — the doc
+    //      lives in its own collection only after a fresh save.
+    //   2. Otherwise prefer the most-recently-updated doc.
     const collections = await db.listCollections().toArray();
     const targets = collections.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
-    const stations: StationConfig[] = [];
-    const seen = new Set<string>();
+
+    interface Candidate { doc: any; colName: string; updatedAt: number; canonical: boolean; }
+    const bestById = new Map<string, Candidate>();
+
     for (let i = 0; i < targets.length; i += STATIONS_LOAD_CONCURRENCY) {
       const batch = targets.slice(i, i + STATIONS_LOAD_CONCURRENCY);
-      const docs = await Promise.all(
-        batch.map(col => db.collection(col.name).findOne().catch(() => null)),
+      const results = await Promise.all(
+        batch.map(async col => ({ col: col.name, doc: await db.collection(col.name).findOne().catch(() => null) })),
       );
-      for (const doc of docs) {
-        if (doc && doc.id && doc.mqttTopics && !seen.has(doc.id)) {
-          seen.add(doc.id);
-          stations.push(doc as unknown as StationConfig);
+      for (const { col, doc } of results) {
+        if (!doc || !doc.id || !doc.mqttTopics) continue;
+        const cand: Candidate = {
+          doc,
+          colName: col,
+          updatedAt: new Date(doc.updatedAt || 0).getTime(),
+          canonical: doc.name === col,
+        };
+        const existing = bestById.get(doc.id);
+        if (!existing
+          || (cand.canonical && !existing.canonical)
+          || (cand.canonical === existing.canonical && cand.updatedAt > existing.updatedAt)) {
+          bestById.set(doc.id, cand);
         }
       }
     }
-    return stations;
+    return [...bestById.values()].map(c => c.doc as unknown as StationConfig);
   } catch (err: any) {
     console.error(`[init] Failed to load stations from MongoDB:`, err.message);
     return [];
