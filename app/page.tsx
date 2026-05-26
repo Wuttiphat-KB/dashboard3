@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useFleet, FleetStation } from '@/lib/hooks/useFleet';
 
@@ -119,6 +119,10 @@ export default function FleetOverview() {
   const { fleet, loading, error } = useFleet();
   const [search, setSearch] = useState('');
   const [sort, setSort]     = useState<'az' | 'problems'>('az');
+  // Suppress SSR/client hydration mismatch — useFleet's loading state
+  // diverges between server (no fetch fired) and client (fetch fires on render).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const onlineCount   = fleet.filter(f => f.status === 'online').length;
   const degradedCount = fleet.filter(f => f.status === 'degraded').length;
@@ -161,10 +165,10 @@ export default function FleetOverview() {
       <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 className="section-title" style={{ fontSize: 18 }}>Overview</h1>
-          <p className="section-subtitle">
-            {loading ? 'Loading stations...' : `${fleet.length} stations`}
-            {filtered.length !== fleet.length && ` · ${filtered.length} shown`}
-            {error && <span style={{ color: 'var(--error-text)' }}> · API error: {error}</span>}
+          <p className="section-subtitle" suppressHydrationWarning>
+            {!mounted ? ' ' : loading ? 'Loading stations...' : `${fleet.length} stations`}
+            {mounted && filtered.length !== fleet.length && ` · ${filtered.length} shown`}
+            {mounted && error && <span style={{ color: 'var(--error-text)' }}> · API error: {error}</span>}
           </p>
         </div>
 

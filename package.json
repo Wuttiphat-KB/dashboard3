@@ -10,7 +10,8 @@
     "server": "tsx --max-old-space-size=8192 server/index.ts",
     "server:watch": "tsx --max-old-space-size=8192 watch server/index.ts",
     "import:stations": "tsx scripts/importStations.ts",
-    "create-indexes": "tsx scripts/createIndexes.ts"
+    "create-indexes": "tsx scripts/createIndexes.ts",
+    "update:fault-status": "tsx scripts/updateFaultStatusTopic.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.1",

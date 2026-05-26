@@ -205,9 +205,23 @@ function ConfigPageInner() {
         );
       });
 
-  const handleDelete = (id: string) => {
-    setStations(prev => prev.filter(s => s.id !== id));
+  const handleDelete = async (id: string) => {
     setDeleteConfirm(null);
+    try {
+      const res = await fetch('/api/stations/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(`Delete failed: ${body?.error || res.status}`);
+        return;
+      }
+      setStations(prev => prev.filter(s => s.id !== id));
+    } catch (err: any) {
+      alert(`Delete failed: ${err?.message || err}`);
+    }
   };
 
   // ── PIN gate ────────────────────────────────────────────────────────────────
