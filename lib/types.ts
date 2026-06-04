@@ -6,11 +6,12 @@ export interface MqttTopics {
   heartbeatPi5: string;  // {"heartbeatPI5":1,"timestamp":"..."}
   router:       string;  // full router status payload
   meter:        string;  // {"meter1":131734760,"meter2":119364060,...}
-  powerModule:  string;  // {"PM1":"2","Voltage1":...} / {"PM2":"3",...}
-  faultStatus:  string;  // fault status script heartbeat
-  statePlc:     string;  // plc state script heartbeat
-  fanRPM:       string;  // {"FAN 1":5397.99,...,"FAN 8":5503.99}
-  plc:          string;  // full PLC data payload
+  powerModule:  string;  // Phoenix only — {"PM1":"2","Voltage1":...} / {"PM2":"3",...}
+  faultStatus:  string;  // Phoenix only — fault status script heartbeat
+  statePlc:     string;  // Phoenix only — plc state script heartbeat
+  fanRPM:       string;  // Phoenix only — {"FAN 1":5397.99,...,"FAN 8":5503.99}
+  plc:          string;  // Phoenix only — full PLC data payload
+  vectorState?: string;  // Vector only — combined state topic (connectors, power_module, temps, isolation, contactor)
 }
 
 export interface MongoCollections {
@@ -28,6 +29,18 @@ export interface TelegramConfig {
 }
 
 export type FanBrand = 'EBM' | 'Winstrom' | 'DAKO' | string;
+// HMI brand decides whether HMI_status from the PLC payload is meaningful.
+// DWIN displays don't actually report active/inactive so we treat the value
+// as "N/A" and skip it from the danger / problems detection.
+export type HmiBrand = 'Phoenix' | 'DWIN';
+
+// Controller hardware decides which MQTT pipeline the backend uses.
+//   - phoenix: legacy — separate plc / powerModule / fanRPM / faultStatus topics
+//   - vector:  one consolidated `vectorState` topic carries PLC + PowerModule +
+//              isolation + cable temps + contactor + emergency.
+// The Vector handler maps payload fields into the same `_plc_data` / `_pm_data`
+// caches so all existing dashboards keep working.
+export type ControllerType = 'phoenix' | 'vector';
 
 export interface Station {
   id:               string;
@@ -40,6 +53,8 @@ export interface Station {
   expectedPmHead2:  number;      // expected PM count for charger head 2
   hasPi5?:          boolean;     // station has Pi5 device — default true (treat undefined as true)
   fanBrand:         FanBrand;    // fan manufacturer: EBM, Winstrom, DAKO
+  hmiBrand?:        HmiBrand;    // HMI display: Phoenix (reports status) | DWIN (treat as N/A) — default Phoenix
+  controllerType?:  ControllerType;  // 'phoenix' (default) or 'vector' — picks the MQTT ingestion pipeline
   mqttTopics:       MqttTopics;
   mongoCollections: MongoCollections;
   telegram:         TelegramConfig;

@@ -22,6 +22,7 @@ import { initScriptHbHandlers, checkScriptTimeouts, registerStatePlcCollection }
 import { checkAllAlerts, loadActiveAlertsFromDb } from './modules/alerts';
 import { backfillMeterChangedAt } from './modules/meter';
 import { startChargeAggregator, backfillStation } from './modules/chargeAggregator';
+import { initVectorHandler, registerVectorStation, unregisterVectorStation } from './modules/vector';
 import { onMessage } from './mqtt';
 import { MOCK_STATIONS } from '../lib/mockData';
 
@@ -31,6 +32,7 @@ interface StationConfig {
   id: string;
   name: string;
   displayName: string;
+  controllerType?: 'phoenix' | 'vector';   // 'phoenix' (default) or 'vector'
   mqttTopics: {
     heartbeat: string;
     heartbeatPi5: string;
@@ -40,7 +42,8 @@ interface StationConfig {
     faultStatus: string;
     plc: string;
     fanRPM: string;
-    [key: string]: string;
+    vectorState?: string;
+    [key: string]: string | undefined;
   };
   mongoCollections: {
     powerModule: string;
@@ -263,25 +266,49 @@ async function seedPmAndMeterCaches(stations: StationConfig[]): Promise<void> {
 
 function registerStationConfig(station: StationConfig): void {
   const { mqttTopics, mongoCollections } = station;
+  const isVector = station.controllerType === 'vector';
 
-  registerStation(station.id, {
-    heartbeat:    mqttTopics.heartbeat,
-    heartbeatPi5: mqttTopics.heartbeatPi5,
-    router:       mqttTopics.router,
-    meter:        mqttTopics.meter,
-    powerModule:  mqttTopics.powerModule,
-    faultStatus:  mqttTopics.faultStatus,
-    plc:          mqttTopics.plc,
-    fanRPM:       mqttTopics.fanRPM,
-  });
+  // Common topics across both controllers — heartbeat, router, meter, pi5.
+  // The Vector path swaps the per-domain Phoenix topics (plc / powerModule /
+  // faultStatus / fanRPM) for the single vectorState topic.
+  const topics: Record<string, string> = {
+    heartbeat:    mqttTopics.heartbeat    || '',
+    heartbeatPi5: mqttTopics.heartbeatPi5 || '',
+    router:       mqttTopics.router       || '',
+    meter:        mqttTopics.meter        || '',
+  };
+  if (isVector) {
+    topics.vectorState = mqttTopics.vectorState || '';
+  } else {
+    topics.powerModule = mqttTopics.powerModule || '';
+    topics.faultStatus = mqttTopics.faultStatus || '';
+    topics.plc         = mqttTopics.plc         || '';
+    topics.fanRPM      = mqttTopics.fanRPM      || '';
+  }
+  registerStation(station.id, topics);
 
   registerHeartbeatStation(station.id, {
     heartbeatFallingEdge: mongoCollections.heartbeatFallingEdge,
     router: mongoCollections.router,
   });
   registerMeterStation(station.id, mongoCollections.meter);
-  registerPmStation(station.id, mongoCollections.powerModule);
-  registerStatePlcCollection(station.id, (mongoCollections as any).statePlc || '');
+
+  if (isVector) {
+    // Vector handler owns PowerModule + StatePLC forwards.
+    registerVectorStation(station.id, {
+      powerModule: mongoCollections.powerModule,
+      statePlc:    (mongoCollections as any).statePlc || '',
+    });
+    // Phoenix-only registrations get cleared so leftovers from a previous
+    // controllerType don't double-write.
+    registerPmStation(station.id, '');
+    registerStatePlcCollection(station.id, '');
+  } else {
+    registerPmStation(station.id, mongoCollections.powerModule);
+    registerStatePlcCollection(station.id, (mongoCollections as any).statePlc || '');
+    // Clear Vector mappings in case the station was previously Vector.
+    unregisterVectorStation(station.id);
+  }
 }
 
 async function main() {
@@ -306,6 +333,7 @@ async function main() {
   initPowerModuleHandler();
   initFanRpmHandler();
   initScriptHbHandlers();
+  initVectorHandler();
 
   // Router also feeds temperature module
   onMessage('router', (stationId, _topic, payload) => {
@@ -332,10 +360,11 @@ async function main() {
   const registeredConfigs = new Map<string, string>();  // stationId → JSON.stringify(mqttTopics)
 
   function topicSignature(st: StationConfig): string {
-    // Include BOTH mqttTopics and mongoCollections so changing a collection
-    // name in /config (e.g. fixing a typo BNK1 → BKN1) triggers a re-register
-    // and modules start writing to the new collection.
+    // Include mqttTopics, mongoCollections AND controllerType so switching a
+    // station between Phoenix and Vector triggers a re-register (different
+    // MQTT topic set + different downstream handlers).
     return JSON.stringify({
+      controller: st.controllerType || 'phoenix',
       topics: st.mqttTopics || {},
       cols:   st.mongoCollections || {},
     });
@@ -420,6 +449,7 @@ async function main() {
       for (const id of registeredConfigs.keys()) {
         if (!latestIds.has(id)) {
           unregisterStation(id);
+          unregisterVectorStation(id);
           registeredConfigs.delete(id);
           console.log(`[init] − removed: ${id}`);
         }

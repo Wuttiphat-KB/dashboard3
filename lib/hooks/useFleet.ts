@@ -14,6 +14,7 @@ export interface FleetStation {
     expectedPmHead2: number;
     hasPi5: boolean;
     fanBrand: string;
+    hmiBrand?: 'Phoenix' | 'DWIN';
   };
   status: 'online' | 'degraded' | 'offline';
   heartbeat: { online: boolean; lastSeen: string | null };
@@ -53,6 +54,16 @@ export interface FleetStation {
     powerKw: number;
     soc: number;
   }[];
+  deviceStatus?: {
+    hmi:  string;
+    plc1: string;
+    plc2: string;
+    imd?: string;                  // Vector-only — IMD insulation-monitor device status
+    emergencyActive?: boolean;     // Vector-only — true when estop pressed or loop broken
+    tempSensorFaults?: string[];   // Vector-only — list of failed cable temp sensors ("t1"...)
+    head1: { tempPos: number; tempNeg: number };
+    head2: { tempPos: number; tempNeg: number };
+  };
   scripts?: {
     faultStatus: { online: boolean; lastHeartbeat: string | null };
     plc:         { online: boolean; lastHeartbeat: string | null };

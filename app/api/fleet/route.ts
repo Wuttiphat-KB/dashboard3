@@ -226,6 +226,35 @@ export async function GET() {
         };
       });
 
+      // Device-status snapshot — used by the /overview/device monitor page.
+      // String statuses ("Active" / "Inactive" / "Unknown") and per-head cable
+      // terminal temperatures pulled straight from the PLC payload.
+      const devStatus = (key: string): string => {
+        if (!plcSource) return 'Unknown';
+        const v = plcSource[key];
+        return v != null ? String(v) : 'Unknown';
+      };
+      const devTemp = (key: string): number => {
+        if (!plcSource) return 0;
+        return Number(plcSource[key] ?? 0);
+      };
+      // Vector controllers add safety fields that Phoenix doesn't have. They
+      // are passed through verbatim — DeviceStatusCard renders them when
+      // present and ignores them otherwise.
+      const imdRaw           = plcSource?.IMD_status;
+      const emergencyActive  = plcSource?.emergencyActive === true;
+      const tempSensorFaults = Array.isArray(plcSource?.tempSensorFaults) ? plcSource.tempSensorFaults : [];
+      const deviceStatus = {
+        hmi:  devStatus('HMI_status'),
+        plc1: devStatus('PLC1_status'),
+        plc2: devStatus('PLC2_status'),
+        imd:  imdRaw != null ? String(imdRaw) : undefined,
+        emergencyActive,
+        tempSensorFaults,
+        head1: { tempPos: devTemp('temp1Head1'), tempNeg: devTemp('temp2Head1') },
+        head2: { tempPos: devTemp('temp1Head2'), tempNeg: devTemp('temp2Head2') },
+      };
+
       const routerData = routerByStation.get(st.id);
       const fanDoc = fanByStation.get(st.id);
       const fans = (fanDoc as any)?.fans || {};
@@ -253,6 +282,7 @@ export async function GET() {
           expectedPmHead2: st.expectedPmHead2 ?? st.expectedPmPerHead ?? 3,
           hasPi5,
           fanBrand: st.fanBrand || 'EBM',
+          hmiBrand: st.hmiBrand || 'Phoenix',
         },
         status,
         heartbeat: { online: hbOnline, lastSeen: hbTs || null },
@@ -279,6 +309,7 @@ export async function GET() {
         },
         powerModule: [1, 2].map(h => pmHeads[h] || { head: h, pmCount: 0, voltage: 0, current: 0, powerKw: 0, timestamp: '', online: false }),
         plcHeads,
+        deviceStatus,
         scripts: {
           faultStatus: { online: scriptOnline(scriptFault), lastHeartbeat: tsToIso(scriptFault?.lastSeen) },
           plc:         { online: scriptOnline(scriptPlc),   lastHeartbeat: tsToIso(scriptPlc?.lastSeen) },

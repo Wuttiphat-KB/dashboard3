@@ -2,7 +2,6 @@
 
 import { use, useState } from 'react';
 import Link from 'next/link';
-import { getMeterLed } from '@/lib/mockData';
 import { useFleet } from '@/lib/hooks/useFleet';
 import { StationDashboardData, Station, METER_MAX_KWH } from '@/lib/types';
 
@@ -12,6 +11,7 @@ const OVERVIEW_TYPES = [
   { id: 'meter',       label: 'Meter'        },
   { id: 'temperature', label: 'Temperature'  },
   { id: 'fanrpm',      label: 'Fan RPM'      },
+  { id: 'device',      label: 'Device Status' },
   { id: 'scripts',     label: 'MQTT Scripts' },
 ] as const;
 
@@ -321,9 +321,6 @@ function TemperatureCard({ station, data }: { station: Station; data: StationDas
     </span>
   );
 
-  const r = 34;
-  const C = 2 * Math.PI * r;
-
   // Larger gauge — temperature is the hero element
   const gaugeR = 52;
   const gaugeC = 2 * Math.PI * gaugeR;
@@ -459,6 +456,207 @@ function FanRPMCard({ station, data }: { station: Station; data: StationDashboar
   );
 }
 
+// ── Device Status ─────────────────────────────────────────────────────────────
+// Monitors HMI / PLC device status plus per-head cable terminal temps
+// pulled from the PLC topic. "Inactive" status or temp ≥ 190 °C is flagged as
+// a danger condition.
+const TEMP_DANGER_C  = 190;
+const TEMP_WARNING_C = 150;
+
+function DeviceStatusCard({ station, data }: { station: Station; data: StationDashboardData }) {
+  const ds = (data as any).__deviceStatus as
+    | { hmi: string; plc1: string; plc2: string;
+        imd?: string; emergencyActive?: boolean; tempSensorFaults?: string[];
+        head1: { tempPos: number; tempNeg: number }; head2: { tempPos: number; tempNeg: number }; }
+    | undefined;
+
+  const numHeads = station.chargerHeads || 2;
+  // DWIN displays don't report active/inactive — treat as N/A and skip from
+  // danger detection. Phoenix is the default for legacy / unset stations.
+  const hmiBrand: 'Phoenix' | 'DWIN' = (station.hmiBrand as any) || 'Phoenix';
+  const ignoreHmi = hmiBrand === 'DWIN';
+
+  const statusOk = (s: string) => s === 'Active';
+  const tempLevel = (t: number) => t >= TEMP_DANGER_C ? 'danger' : t >= TEMP_WARNING_C ? 'warn' : 'ok';
+
+  // Roll-up — any danger condition flips the card.
+  const inactiveStatuses: string[] = [];
+  if (ds) {
+    if (!ignoreHmi && !statusOk(ds.hmi))  inactiveStatuses.push('HMI');
+    if (!statusOk(ds.plc1)) inactiveStatuses.push('PLC1');
+    if (!statusOk(ds.plc2)) inactiveStatuses.push('PLC2');
+    if (ds.imd != null && !statusOk(ds.imd)) inactiveStatuses.push('IMD');
+  }
+
+  const allTemps: number[] = ds ? [
+    ds.head1.tempPos, ds.head1.tempNeg,
+    ...(numHeads >= 2 ? [ds.head2.tempPos, ds.head2.tempNeg] : []),
+  ] : [];
+  const maxTemp = allTemps.length ? Math.max(...allTemps) : 0;
+  const tempState = tempLevel(maxTemp);
+
+  // Vector-only safety bits — Phoenix payloads leave these undefined.
+  const emergencyActive  = !!ds?.emergencyActive;
+  const tempSensorFaults = ds?.tempSensorFaults || [];
+
+  const hasDanger = inactiveStatuses.length > 0 || tempState === 'danger' || emergencyActive;
+  const hasWarn   = !hasDanger && (tempState === 'warn' || tempSensorFaults.length > 0);
+  const cardBorder = !ds ? 'var(--border)' : hasDanger ? 'var(--error)' : hasWarn ? 'var(--warn)' : 'var(--ok)';
+  const cardBadge  = !ds ? (
+    <span className="badge badge-offline"><span className="led" />NO DATA</span>
+  ) : hasDanger ? (
+    <span className="badge badge-error"><span className="led led-error" />DANGER</span>
+  ) : hasWarn ? (
+    <span className="badge badge-warn"><span className="led led-warn led-pulse" />WARNING</span>
+  ) : (
+    <span className="badge badge-ok"><span className="led led-ok led-pulse" />NORMAL</span>
+  );
+
+  // Status pill renderer. `ignored` = device brand doesn't report status
+  // (e.g., DWIN HMI) — render neutral N/A with the brand as a hint.
+  function StatusPill({ label, value, ignored, brandHint }: {
+    label: string; value: string; ignored?: boolean; brandHint?: string;
+  }) {
+    if (ignored) {
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 6, padding: '4px 8px', borderRadius: 4, background: 'var(--bg-elevated)',
+          border: '1px dashed var(--border)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="led" />
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>{label}</span>
+            {brandHint && (
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace' }}>· {brandHint}</span>
+            )}
+          </div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'monospace' }}>N/A</span>
+        </div>
+      );
+    }
+    const ok = statusOk(value);
+    const color   = ok ? 'var(--ok-text)'   : value === 'Unknown' ? 'var(--text-muted)' : 'var(--error-text)';
+    const bg      = ok ? 'var(--ok-bg)'     : value === 'Unknown' ? 'var(--bg-elevated)' : 'var(--error-bg)';
+    const ledCls  = ok ? 'led-ok led-pulse' : value === 'Unknown' ? '' : 'led-error';
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 6, padding: '4px 8px', borderRadius: 4, background: bg,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className={`led ${ledCls}`} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>{label}</span>
+          {brandHint && (
+            <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace' }}>· {brandHint}</span>
+          )}
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, color, fontFamily: 'monospace' }}>{value}</span>
+      </div>
+    );
+  }
+
+  function TempPill({ label, value }: { label: string; value: number }) {
+    const lvl = tempLevel(value);
+    const color = lvl === 'danger' ? 'var(--error-text)' : lvl === 'warn' ? 'var(--warn-text)' : 'var(--ok-text)';
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '4px 8px', borderRadius: 4, background: 'var(--bg-elevated)',
+      }}>
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: 800, color, fontFamily: 'monospace' }}>
+          {value > 0 ? `${value.toFixed(0)}` : '—'}<span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 2 }}>°C</span>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <Shell station={station} data={data} customBadge={cardBadge} borderColor={cardBorder}>
+      {!ds ? (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>
+          No PLC data available
+        </div>
+      ) : (
+        <>
+          {/* Device statuses */}
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+            Device Status
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 8 }}>
+            <StatusPill label="PLC1" value={ds.plc1} />
+            <StatusPill label="PLC2" value={ds.plc2} />
+            <StatusPill label="HMI"  value={ds.hmi}  ignored={ignoreHmi} brandHint={hmiBrand} />
+            {ds.imd != null && <StatusPill label="IMD" value={ds.imd} />}
+          </div>
+
+          {/* Emergency button banner — Vector-only safety override */}
+          {emergencyActive && (
+            <div style={{
+              marginBottom: 8, padding: '6px 10px', background: 'var(--error-bg)',
+              border: '1px solid var(--error)', borderRadius: 4,
+              fontSize: 11, color: 'var(--error-text)', fontWeight: 700,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span className="led led-error" />
+              EMERGENCY STOP ACTIVE
+            </div>
+          )}
+
+          {/* Per-head cable temps */}
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+            Cable Temperature
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 3 }}>HEAD 1</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                <TempPill label="+ Term" value={ds.head1.tempPos} />
+                <TempPill label="– Term" value={ds.head1.tempNeg} />
+              </div>
+            </div>
+            {numHeads >= 2 && (
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 3 }}>HEAD 2</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <TempPill label="+ Term" value={ds.head2.tempPos} />
+                  <TempPill label="– Term" value={ds.head2.tempNeg} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Faulty temp-sensor warning (Vector-only) — not a hard danger,
+              just a heads-up that the cable temp reading is incomplete. */}
+          {tempSensorFaults.length > 0 && (
+            <div style={{
+              marginTop: 8, padding: '6px 10px', background: 'var(--warn-bg)',
+              border: '1px solid var(--warn)', borderRadius: 4,
+              fontSize: 11, color: 'var(--warn-text)', fontWeight: 600,
+            }}>
+              ⚠ Faulty temp sensors: {tempSensorFaults.join(', ')}
+            </div>
+          )}
+
+          {/* Issue summary */}
+          {hasDanger && (
+            <div style={{
+              marginTop: 8, padding: '6px 10px', background: 'var(--error-bg)',
+              borderRadius: 4, fontSize: 11, color: 'var(--error-text)', fontWeight: 600,
+            }}>
+              ⚠ {[
+                inactiveStatuses.length > 0 && `Inactive: ${inactiveStatuses.join(', ')}`,
+                tempState === 'danger' && `Temp ${maxTemp.toFixed(0)}°C ≥ ${TEMP_DANGER_C}°C`,
+              ].filter(Boolean).join(' · ')}
+            </div>
+          )}
+        </>
+      )}
+    </Shell>
+  );
+}
+
 // ── MQTT Scripts ──────────────────────────────────────────────────────────────
 function ScriptsCard({ station, data }: { station: Station; data: StationDashboardData }) {
   const online  = data.scripts.filter(s => s.online).length;
@@ -507,6 +705,7 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
       expectedPmHead1: fl.station.expectedPmHead1 ?? fl.station.expectedPmPerHead,
       expectedPmHead2: fl.station.expectedPmHead2 ?? fl.station.expectedPmPerHead,
       fanBrand: fl.station.fanBrand,
+      hmiBrand: fl.station.hmiBrand,
       mqttTopics: { heartbeat: '', heartbeatPi5: '', router: '', meter: '', powerModule: '', faultStatus: '', statePlc: '', fanRPM: '', plc: '' },
       mongoCollections: { powerModule: '', meter: '', heartbeatFallingEdge: '', router: '', statePlc: '' },
       telegram: { chatId: '', botToken: '', enabled: false }, createdAt: '',
@@ -559,6 +758,8 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
     };
     // Attach stalled meta from fleet API (used by MeterCard)
     (data as any).__meterMeta = { stalled1: fl.meter.stalled1, stalled2: fl.meter.stalled2 };
+    // Attach device-status from fleet API (used by DeviceStatusCard)
+    (data as any).__deviceStatus = fl.deviceStatus;
     return { station, data };
   }).sort((a, b) => {
     const an = a.station.displayName || a.station.name || a.station.id;
@@ -604,6 +805,24 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
           const tempA = routerIsStale(a.data.routerData) ? 0 : a.data.routerData.tempRaw / 10;
           const tempB = routerIsStale(b.data.routerData) ? 0 : b.data.routerData.tempRaw / 10;
           return tempB - tempA;  // hottest first
+        }
+        if (type === 'device') {
+          // Score = emergency (1e6) + inactive devices (×1000) + max cable temp.
+          // Emergency dominates; inactive next; cable temp breaks ties.
+          // DWIN HMI is excluded — those stations' HMI value is meaningless.
+          const scoreOf = (x: typeof a) => {
+            const ds = (x.data as any).__deviceStatus;
+            if (!ds) return -1;  // No-data sinks to the bottom
+            const numHeads = x.station.chargerHeads || 2;
+            const ignoreHmi = (x.station.hmiBrand || 'Phoenix') === 'DWIN';
+            const baseStatuses = ignoreHmi ? [ds.plc1, ds.plc2] : [ds.hmi, ds.plc1, ds.plc2];
+            const allStatuses = ds.imd != null ? [...baseStatuses, ds.imd] : baseStatuses;
+            const inact = allStatuses.filter((s: string) => s !== 'Active' && s !== 'Unknown').length;
+            const temps = [ds.head1?.tempPos || 0, ds.head1?.tempNeg || 0,
+                           ...(numHeads >= 2 ? [ds.head2?.tempPos || 0, ds.head2?.tempNeg || 0] : [])];
+            return (ds.emergencyActive ? 1_000_000 : 0) + inact * 1000 + Math.max(...temps);
+          };
+          return scoreOf(b) - scoreOf(a);  // worst first
         }
         return STATUS_ORDER[deriveStatus(a.data)] - STATUS_ORDER[deriveStatus(b.data)];
       })
@@ -710,6 +929,38 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
         { label: 'Stopped',       value: all.filter(s => !s.online).length, color: 'var(--error)' },
       ];
     }
+    if (type === 'device') {
+      let normal = 0, warning = 0, danger = 0;
+      let maxTempSeen = 0;
+      let inactiveDevices = 0;
+      let emergencyCount = 0;
+      for (const x of allData) {
+        const ds = (x.data as any).__deviceStatus;
+        if (!ds) continue;
+        const numHeads = x.station.chargerHeads || 2;
+        const ignoreHmi = (x.station.hmiBrand || 'Phoenix') === 'DWIN';
+        const baseStatuses = ignoreHmi ? [ds.plc1, ds.plc2] : [ds.hmi, ds.plc1, ds.plc2];
+        const allStatuses = ds.imd != null ? [...baseStatuses, ds.imd] : baseStatuses;
+        const inact = allStatuses.filter((s: string) => s !== 'Active' && s !== 'Unknown').length;
+        inactiveDevices += inact;
+        if (ds.emergencyActive) emergencyCount++;
+        const temps = [ds.head1?.tempPos || 0, ds.head1?.tempNeg || 0,
+                       ...(numHeads >= 2 ? [ds.head2?.tempPos || 0, ds.head2?.tempNeg || 0] : [])];
+        const stTempMax = Math.max(...temps);
+        if (stTempMax > maxTempSeen) maxTempSeen = stTempMax;
+        if (inact > 0 || stTempMax >= TEMP_DANGER_C || ds.emergencyActive) danger++;
+        else if (stTempMax >= TEMP_WARNING_C || (ds.tempSensorFaults || []).length > 0) warning++;
+        else normal++;
+      }
+      return [
+        { label: 'Normal',           value: `${normal}/${allData.length}`, color: ratioColor(normal, allData.length) },
+        { label: 'Warning',          value: warning,                       color: warning > 0 ? 'var(--warn-text)' : 'var(--text-muted)' },
+        { label: 'Danger',           value: danger,                        color: danger > 0 ? 'var(--error-text)' : 'var(--text-muted)' },
+        { label: 'Inactive Devices', value: inactiveDevices,               color: inactiveDevices > 0 ? 'var(--error-text)' : 'var(--text-muted)' },
+        { label: 'Emergency',        value: emergencyCount,                color: emergencyCount > 0 ? 'var(--error-text)' : 'var(--text-muted)' },
+        { label: 'Max Cable Temp',   value: `${maxTempSeen.toFixed(0)} °C`, color: maxTempSeen >= TEMP_DANGER_C ? 'var(--error-text)' : maxTempSeen >= TEMP_WARNING_C ? 'var(--warn-text)' : 'var(--ok-text)' },
+      ];
+    }
     return [];
   })();
 
@@ -805,6 +1056,7 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
           if (type === 'meter')       return <MeterCard        key={station.id} station={station} data={data} />;
           if (type === 'temperature') return <TemperatureCard  key={station.id} station={station} data={data} />;
           if (type === 'fanrpm')      return <FanRPMCard       key={station.id} station={station} data={data} />;
+          if (type === 'device')      return <DeviceStatusCard key={station.id} station={station} data={data} />;
           if (type === 'scripts')     return <ScriptsCard      key={station.id} station={station} data={data} />;
           return null;
         })}

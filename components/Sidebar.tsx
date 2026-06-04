@@ -18,12 +18,13 @@ const NAV_STATS = [
 ];
 
 const NAV_OVERVIEW = [
-  { href: '/overview/heartbeat',   label: 'Heartbeat',    abbr: 'HB' },
-  { href: '/overview/powermodule', label: 'Power Module', abbr: 'PM' },
-  { href: '/overview/meter',       label: 'Meter',        abbr: 'MT' },
-  { href: '/overview/temperature', label: 'Temperature',  abbr: 'TM' },
-  { href: '/overview/fanrpm',      label: 'Fan RPM',      abbr: 'FN' },
-  { href: '/overview/scripts',     label: 'MQTT Scripts', abbr: 'MQ' },
+  { href: '/overview/heartbeat',   label: 'Heartbeat',     abbr: 'HB' },
+  { href: '/overview/powermodule', label: 'Power Module',  abbr: 'PM' },
+  { href: '/overview/meter',       label: 'Meter',         abbr: 'MT' },
+  { href: '/overview/temperature', label: 'Temperature',   abbr: 'TM' },
+  { href: '/overview/fanrpm',      label: 'Fan RPM',       abbr: 'FN' },
+  { href: '/overview/device',      label: 'Device Status', abbr: 'DV' },
+  { href: '/overview/scripts',     label: 'MQTT Scripts',  abbr: 'MQ' },
 ];
 
 interface Props {

@@ -15,6 +15,8 @@ const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   expectedPmHead2: 3,
   hasPi5: true,
   fanBrand: 'EBM',
+  hmiBrand: 'Phoenix',
+  controllerType: 'phoenix',
   mqttTopics: {
     heartbeat:    '',
     heartbeatPi5: '',
@@ -25,6 +27,7 @@ const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
     statePlc:     '',
     fanRPM:       '',
     plc:          '',
+    vectorState:  '',
   },
   mongoCollections: {
     powerModule:          '',
@@ -362,7 +365,9 @@ function ConfigPageInner() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName || station.name}</span>
                     <span className="badge badge-info" style={{ fontSize: 10 }}>{station.name}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{station.chargerHeads} heads · {station.fanBrand}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {station.chargerHeads} heads · Fan {station.fanBrand} · HMI {station.hmiBrand || 'Phoenix'} · Controller {(station.controllerType || 'phoenix') === 'vector' ? 'Vector' : 'Phoenix'}
+                    </span>
                   </div>
                   {/* Quick topic summary */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 4 }}>
@@ -482,6 +487,32 @@ function ConfigPageInner() {
               </select>
             </div>
             <div>
+              <label className="input-label">HMI Brand</label>
+              <select className="input"
+                value={form.hmiBrand || 'Phoenix'}
+                onChange={e => setForm(f => ({ ...f, hmiBrand: e.target.value as 'Phoenix' | 'DWIN' }))}
+              >
+                <option value="Phoenix">Phoenix</option>
+                <option value="DWIN">DWIN</option>
+              </select>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
+                DWIN displays don&apos;t report active/inactive — Device Status page will skip HMI checks for these
+              </div>
+            </div>
+            <div>
+              <label className="input-label">Controller Type</label>
+              <select className="input"
+                value={form.controllerType || 'phoenix'}
+                onChange={e => setForm(f => ({ ...f, controllerType: e.target.value as 'phoenix' | 'vector' }))}
+              >
+                <option value="phoenix">Phoenix (legacy — separate topics)</option>
+                <option value="vector">Vector (single state topic)</option>
+              </select>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
+                Vector controllers publish PLC + PowerModule + temps + isolation in ONE topic. For Vector you should also set HMI Brand to DWIN.
+              </div>
+            </div>
+            <div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}>
                 <input type="checkbox"
                   checked={form.hasPi5 ?? true}
@@ -500,7 +531,11 @@ function ConfigPageInner() {
 
         {/* ── MQTT Topics ── */}
         <div className="card">
-          <SectionHeader icon="⇆" title="MQTT Topics" subtitle="Topics subscribed on the MQTT broker" />
+          <SectionHeader icon="⇆" title="MQTT Topics" subtitle={
+            form.controllerType === 'vector'
+              ? 'Vector controller — uses ONE combined state topic for PLC + PowerModule + temps'
+              : 'Topics subscribed on the MQTT broker'
+          } />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <InputRow label="Heartbeat"
               value={form.mqttTopics.heartbeat} onChange={v => setTopic('heartbeat', v)}
@@ -518,22 +553,32 @@ function ConfigPageInner() {
               value={form.mqttTopics.meter} onChange={v => setTopic('meter', v)}
               placeholder="ev/STID/meter/data"
               hint={'{"meter1":131734760,"meter2":119364060,...} (Wh)'} />
-            <InputRow label="Power Module"
-              value={form.mqttTopics.powerModule} onChange={v => setTopic('powerModule', v)}
-              placeholder="ev/STID/pm/data"
-              hint={'{"PM1":"2","Voltage1":418.2,...} / {"PM2":"3",...}'} />
-            <InputRow label="Fault Status Heartbeat"
-              value={form.mqttTopics.faultStatus} onChange={v => setTopic('faultStatus', v)}
-              placeholder="ev/STID/script/fault_hb"
-              hint='{"heartbeat":1,"timestamp":"..."} → script heartbeat' />
-            <InputRow label="Fan RPM"
-              value={form.mqttTopics.fanRPM} onChange={v => setTopic('fanRPM', v)}
-              placeholder="ev/STID/fan/rpm"
-              hint={'{"FAN 1":5397.99,...,"FAN 8":5503.99}'} />
-            <InputRow label="PLC Data"
-              value={form.mqttTopics.plc} onChange={v => setTopic('plc', v)}
-              placeholder="ev/STID/plc/data"
-              hint="Full PLC payload + used for PLC script heartbeat timeout detection" />
+
+            {form.controllerType === 'vector' ? (
+              <InputRow label="Vector State Topic"
+                value={form.mqttTopics.vectorState || ''} onChange={v => setTopic('vectorState' as any, v)}
+                placeholder="ev/STID/vector/state"
+                hint="Single Vector payload — connectors, power_module, temps, isolation, contactor, emergency" />
+            ) : (
+              <>
+                <InputRow label="Power Module"
+                  value={form.mqttTopics.powerModule} onChange={v => setTopic('powerModule', v)}
+                  placeholder="ev/STID/pm/data"
+                  hint={'{"PM1":"2","Voltage1":418.2,...} / {"PM2":"3",...}'} />
+                <InputRow label="Fault Status Heartbeat"
+                  value={form.mqttTopics.faultStatus} onChange={v => setTopic('faultStatus', v)}
+                  placeholder="ev/STID/script/fault_hb"
+                  hint='{"heartbeat":1,"timestamp":"..."} → script heartbeat' />
+                <InputRow label="Fan RPM"
+                  value={form.mqttTopics.fanRPM} onChange={v => setTopic('fanRPM', v)}
+                  placeholder="ev/STID/fan/rpm"
+                  hint={'{"FAN 1":5397.99,...,"FAN 8":5503.99}'} />
+                <InputRow label="PLC Data"
+                  value={form.mqttTopics.plc} onChange={v => setTopic('plc', v)}
+                  placeholder="ev/STID/plc/data"
+                  hint="Full PLC payload + used for PLC script heartbeat timeout detection" />
+              </>
+            )}
           </div>
         </div>
 
