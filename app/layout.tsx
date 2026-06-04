@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EV Monitor — Charger Station Dashboard",
-  description: "Real-time EV charger station monitoring dashboard",
+  title: "FlexFast — EV Charger Monitoring",
+  description: "FlexFast by EDS — real-time EV charger station monitoring dashboard",
 };
 
 export const viewport: Viewport = {

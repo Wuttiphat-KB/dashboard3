@@ -131,39 +131,38 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
           minHeight: 57,
         }}>
           {collapsed ? (
-            /* Collapsed: just the EV box — click to expand */
+            /* Collapsed: small square icon, click to expand */
             <button
               onClick={onToggleCollapse}
               title="Expand sidebar"
               style={{
-                width: 32, height: 32, borderRadius: 6,
-                background: 'var(--info)',
+                width: 36, height: 36, borderRadius: 6,
+                background: 'transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 700, color: '#fff',
                 border: 'none', cursor: 'pointer', flexShrink: 0,
+                padding: 0,
               }}
             >
-              EV
+              <img
+                src="/flexfast-logo.png"
+                alt="FlexFast"
+                style={{ width: 32, height: 32, objectFit: 'contain' }}
+              />
             </button>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 28, height: 28, borderRadius: 6,
-                  background: 'var(--info)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 700, color: '#fff', flexShrink: 0,
-                }}>
-                  EV
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>
-                    EV Monitor
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-                    CHARGER STATION
-                  </div>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <img
+                  src="/flexfast-logo.png"
+                  alt="FlexFast by EDS"
+                  style={{
+                    height: 38,
+                    width: 'auto',
+                    maxWidth: 160,
+                    objectFit: 'contain',
+                    flexShrink: 0,
+                  }}
+                />
               </div>
               {/* Collapse button */}
               <button
