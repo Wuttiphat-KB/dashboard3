@@ -144,8 +144,8 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
               }}
             >
               <img
-                src="/flexfast-logo.png"
-                alt="FlexFast"
+                src="/flexxfast-logo.png"
+                alt="FlexxFast"
                 style={{ width: 32, height: 32, objectFit: 'contain' }}
               />
             </button>
@@ -153,8 +153,8 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
                 <img
-                  src="/flexfast-logo.png"
-                  alt="FlexFast by EDS"
+                  src="/flexxfast-logo.png"
+                  alt="FlexxFast by EDS"
                   style={{
                     height: 38,
                     width: 'auto',
