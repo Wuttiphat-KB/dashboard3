@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import Sidebar from './Sidebar';
 import { useWebSocket, WsMessage } from '@/lib/hooks/useWebSocket';
 import { invalidateFleet, invalidateDashboard } from '@/lib/hooks/dataCache';
@@ -10,6 +11,9 @@ const SIDEBAR_W_COL = 52;
 const MOBILE_BREAKPOINT = 768;
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAuthRoute = pathname === '/login';
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed,   setCollapsed]   = useState(false);
   const [theme,       setTheme]       = useState<'dark' | 'light'>('dark');
@@ -51,6 +55,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   // On mobile, sidebar is overlay → main content has no left margin
   const sideW = isMobile ? 0 : (collapsed ? SIDEBAR_W_COL : SIDEBAR_W);
+
+  // /login renders standalone — no sidebar / topbar.
+  // Hooks above this line still run so the order is stable across navigations.
+  if (isAuthRoute) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="app-layout">

@@ -473,17 +473,40 @@ async function main() {
 
   // ── Memory monitor ──────────────────────────────────────────────
   // Logs heap stats every 5 min so it's obvious when memory grows. If we
-  // ever approach the 8GB cap, exit cleanly so a process supervisor (Task
-  // Scheduler / PM2) can restart us — better than an OOM crash mid-write.
-  const SOFT_HEAP_LIMIT_MB = 6_500;  // exit before V8 hits 8192 hard limit
+  // ever approach the 8GB cap, exit cleanly so the supervisor (server-loop.bat
+  // / Task Scheduler / PM2) can restart us — better than an OOM crash mid-write.
+  //
+  // We also force a major GC whenever heap creeps over the warning threshold,
+  // which buys time between restarts. Requires the node `--expose-gc` flag
+  // (already set in npm scripts).
+  const HEAP_WARN_MB       = 4_000;  // start force-GC above this
+  const SOFT_HEAP_LIMIT_MB = 6_500;  // give up and exit above this
   let lastMemLog = 0;
+  let lastForcedGcAt = 0;
+  const forceGc: undefined | (() => void) = (global as any).gc;
+  if (!forceGc) {
+    console.warn('[mem] global.gc is not exposed — start node with --expose-gc to enable aggressive GC');
+  }
   setInterval(() => {
-    const m = process.memoryUsage();
-    const heap = Math.round(m.heapUsed / 1024 / 1024);
+    let m = process.memoryUsage();
+    let heap = Math.round(m.heapUsed / 1024 / 1024);
     const rss  = Math.round(m.rss      / 1024 / 1024);
     const ext  = Math.round(m.external / 1024 / 1024);
     const now = Date.now();
-    // Log every 5 min OR immediately if memory jumped > 200MB since last log
+
+    // Aggressive GC once per minute when heap is high. Won't reclaim native
+    // (Buffer/BSON) memory but does trim V8 dead objects → delays the cliff.
+    if (forceGc && heap > HEAP_WARN_MB && (now - lastForcedGcAt) > 60_000) {
+      const before = heap;
+      const t0 = Date.now();
+      try { forceGc(); } catch {}
+      lastForcedGcAt = now;
+      m = process.memoryUsage();
+      heap = Math.round(m.heapUsed / 1024 / 1024);
+      console.log(`[mem] forced GC: ${before}MB → ${heap}MB  (${Date.now() - t0}ms)`);
+    }
+
+    // Log every 5 min
     const shouldLog = (now - lastMemLog) >= 5 * 60_000;
     if (shouldLog) {
       console.log(`[mem] heap=${heap}MB rss=${rss}MB external=${ext}MB pid=${process.pid}`);

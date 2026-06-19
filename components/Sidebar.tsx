@@ -274,6 +274,25 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
                 {theme === 'dark' ? 'DARK' : 'LIGHT'}
               </span>
             </button>
+
+            {/* Logout */}
+            <button
+              onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+                window.location.href = '/login';
+              }}
+              title="Sign out"
+              style={{
+                width: '100%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                padding: '6px 10px', borderRadius: 6,
+                background: 'transparent', border: '1px solid var(--border)',
+                cursor: 'pointer', color: 'var(--text-secondary)',
+                fontSize: 11, fontFamily: 'var(--font-geist-mono), monospace',
+              }}
+            >
+              ⎋ Logout
+            </button>
           </div>
         )}
 
@@ -306,6 +325,20 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
               }}
             >
               »
+            </button>
+            <button
+              onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+                window.location.href = '/login';
+              }}
+              title="Sign out"
+              style={{
+                background: 'none', border: '1px solid var(--border)',
+                borderRadius: 4, cursor: 'pointer', padding: '3px 7px',
+                color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.4,
+              }}
+            >
+              ⎋
             </button>
           </div>
         )}
