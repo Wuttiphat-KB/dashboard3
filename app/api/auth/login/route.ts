@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { validateCredentials, signToken, SESSION_COOKIE, TOKEN_TTL_MS } from '@/lib/auth';
+import { validateCredentials, signToken, SESSION_COOKIE, nextDailyExpiry } from '@/lib/auth';
 
 /**
  * POST /api/auth/login
@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
 
-    const token = await signToken(username);
+    // Session expires at the next 07:00 Thailand time — same value drives both
+    // the signed token and the cookie lifetime so they expire together.
+    const expiresAt = nextDailyExpiry();
+    const token = await signToken(username, expiresAt);
     const jar = await cookies();
     jar.set({
       name: SESSION_COOKIE,
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
       // The cookie value is HMAC-signed so it can't be forged regardless.
       secure: false,
       path: '/',
-      maxAge: Math.floor(TOKEN_TTL_MS / 1000),
+      maxAge: Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)),
     });
 
     return NextResponse.json({ ok: true, username });

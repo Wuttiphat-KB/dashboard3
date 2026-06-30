@@ -14,7 +14,31 @@
  */
 
 export const SESSION_COOKIE = 'auth_session';
-export const TOKEN_TTL_MS   = 7 * 86_400_000;  // 7 days
+export const TOKEN_TTL_MS   = 7 * 86_400_000;  // 7 days (legacy fallback — sessions now expire daily, see nextDailyExpiry)
+
+// Sessions expire every day at 07:00 Thailand time (ICT = UTC+7, no DST), so
+// everyone must log in again after 7am each day.
+const ICT_OFFSET_MS   = 7 * 3_600_000;
+const EXPIRE_HOUR_ICT = 7;
+
+/**
+ * Absolute timestamp (ms) of the next 07:00 Thailand-time boundary strictly
+ * after `now`. Login at 06:00 ICT → expires 07:00 ICT the same day (1h);
+ * login at 08:00 ICT → expires 07:00 ICT the next day.
+ */
+export function nextDailyExpiry(now = Date.now()): number {
+  // Shift to ICT wall-clock to read the local calendar day/time.
+  const ict = new Date(now + ICT_OFFSET_MS);
+  const y = ict.getUTCFullYear();
+  const m = ict.getUTCMonth();
+  const d = ict.getUTCDate();
+  // 07:00 ICT expressed as a UTC timestamp = that wall time minus the offset.
+  let expiry = Date.UTC(y, m, d, EXPIRE_HOUR_ICT, 0, 0, 0) - ICT_OFFSET_MS;
+  if (expiry <= now) {
+    expiry = Date.UTC(y, m, d + 1, EXPIRE_HOUR_ICT, 0, 0, 0) - ICT_OFFSET_MS;
+  }
+  return expiry;
+}
 
 const DEFAULT_SECRET = 'flexxfast-dev-secret-CHANGE-ME-in-prod-2026';
 
@@ -83,8 +107,7 @@ async function hmacHex(message: string, secret: string): Promise<string> {
 
 // ── Token sign / verify ───────────────────────────────────────────────
 
-export async function signToken(username: string, ttlMs = TOKEN_TTL_MS): Promise<string> {
-  const expiresAt = Date.now() + ttlMs;
+export async function signToken(username: string, expiresAt = nextDailyExpiry()): Promise<string> {
   const payload   = `${username}:${expiresAt}`;
   const sig       = await hmacHex(payload, getSecret());
   return toBase64Url(`${payload}:${sig}`);
