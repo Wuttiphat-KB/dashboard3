@@ -1,33 +1,33 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { getMongoClient } from '@/lib/mongoClient';
+import { getStationsCache } from '@/lib/stationsCache';
 
 const STATION_DB = 'Station';
 
 // Same caching strategy as /api/fleet — listCollections() over ~230 collections is the
-// slow path. Cache for 60s.
+// slow path. Cache for 60s. Cache lives on globalThis (lib/stationsCache) so save/delete
+// can invalidate it after a config change.
 const STATION_CACHE_MS = 60_000;
 const FINDONE_CONCURRENCY = 20;
-let cachedStations: any[] | null = null;
-let cachedStationsAt = 0;
-let cachedStationsPromise: Promise<any[]> | null = null;
 
 async function loadStations(client: MongoClient): Promise<any[]> {
+  const cache = getStationsCache();
   const now = Date.now();
-  if (cachedStations && now - cachedStationsAt < STATION_CACHE_MS) {
-    return cachedStations;
+  if (cache.data && now - cache.at < STATION_CACHE_MS) {
+    return cache.data;
   }
-  if (cachedStationsPromise) return cachedStationsPromise;
+  if (cache.promise) return cache.promise;
 
-  cachedStationsPromise = (async () => {
+  cache.promise = (async () => {
     const db = client.db(STATION_DB);
 
     // FAST PATH: read from _stations mirror populated by the backend
     try {
       const docs = await db.collection('_stations').find().toArray();
       if (docs.length > 0) {
-        cachedStations = docs;
-        cachedStationsAt = Date.now();
+        cache.data = docs;
+        cache.at = Date.now();
         return docs;
       }
     } catch {
@@ -60,15 +60,15 @@ async function loadStations(client: MongoClient): Promise<any[]> {
       }
     }
     const out = [...bestById.values()].map(c => c.doc);
-    cachedStations = out;
-    cachedStationsAt = Date.now();
+    cache.data = out;
+    cache.at = Date.now();
     return out;
   })();
 
   try {
-    return await cachedStationsPromise;
+    return await cache.promise;
   } finally {
-    cachedStationsPromise = null;
+    cache.promise = null;
   }
 }
 

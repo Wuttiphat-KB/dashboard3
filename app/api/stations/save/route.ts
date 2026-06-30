@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getMongoClient } from '@/lib/mongoClient';
 import { invalidateFleetCache } from '@/lib/fleetCache';
+import { invalidateStationsCache } from '@/lib/stationsCache';
 
 const STATION_DB = 'Station';
 const COOKIE_NAME = 'cfg_pin';
@@ -124,6 +125,7 @@ export async function POST(req: NextRequest) {
     }
 
     invalidateFleetCache();
+    invalidateStationsCache();
 
     return NextResponse.json({
       ok: true,

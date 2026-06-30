@@ -3,12 +3,15 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useStations } from '@/lib/hooks/useStations';
+import { invalidateStations } from '@/lib/hooks/dataCache';
 import { Station } from '@/lib/types';
 
 const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   name: '',
   displayName: '',
   location: '',
+  lat: undefined,
+  lng: undefined,
   chargerHeads: 2,
   expectedPmPerHead: 3,
   expectedPmHead1: 3,
@@ -234,6 +237,10 @@ function ConfigPageInner() {
       setStations(prev => [...prev, stationDoc]);
     }
 
+    // Refresh the shared client cache so other pages (e.g. Station Map) pick up
+    // the change immediately instead of waiting for the stale window to expire.
+    invalidateStations();
+
     setSaved(true);
     setTimeout(() => { setSaved(false); goToList(); }, 1500);
   };
@@ -447,6 +454,24 @@ function ConfigPageInner() {
               value={form.displayName} onChange={v => setForm(f => ({ ...f, displayName: v }))}
               placeholder="e.g. บางนา สาขา 1" mono={false} />
             <InputRow label="Location" value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} placeholder="e.g. Bangkok – Siam Paragon" mono={false} />
+            <div>
+              <label className="input-label">Map Coordinates (Latitude / Longitude)</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <input className="input" type="number" step="any" inputMode="decimal"
+                  placeholder="Lat e.g. 13.7563"
+                  value={form.lat ?? ''}
+                  onChange={e => setForm(f => ({ ...f, lat: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                  style={{ fontFamily: 'var(--font-geist-mono), monospace' }} />
+                <input className="input" type="number" step="any" inputMode="decimal"
+                  placeholder="Lng e.g. 100.5018"
+                  value={form.lng ?? ''}
+                  onChange={e => setForm(f => ({ ...f, lng: e.target.value === '' ? undefined : Number(e.target.value) }))}
+                  style={{ fontFamily: 'var(--font-geist-mono), monospace' }} />
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
+                Decimal degrees — shown as a pin on the Station Map. Leave blank to auto-locate from the Location text.
+              </div>
+            </div>
             <div>
               <label className="input-label">Number of Charger Heads</label>
               <input className="input" type="number" min={1} max={8}

@@ -47,6 +47,8 @@ export interface Station {
   name:             string;      // internal name for backend communication (also MongoDB collection name)
   displayName:      string;      // name shown on dashboard UI
   location:         string;
+  lat?:             number;      // map latitude (decimal degrees) — optional; falls back to location lookup
+  lng?:             number;      // map longitude (decimal degrees)
   chargerHeads:     number;
   expectedPmPerHead: number;     // DEPRECATED — kept for backwards compatibility (use head1/head2 below)
   expectedPmHead1:  number;      // expected PM count for charger head 1
