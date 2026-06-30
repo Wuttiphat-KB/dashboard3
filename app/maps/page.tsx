@@ -278,7 +278,7 @@ export default function StationMapPage() {
       {/* Header */}
       <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h1 className="section-title" style={{ fontSize: 18 }}>Station Map</h1>
+          <h1 className="section-title" style={{ fontSize: 18 }}>Station Maps</h1>
           <p className="section-subtitle">
             {mapStations.length} stations · {mapped.length} on map
             {search.trim() && ` · ${filtered.length} match "${search.trim()}"`}

@@ -469,7 +469,7 @@ function ConfigPageInner() {
                   style={{ fontFamily: 'var(--font-geist-mono), monospace' }} />
               </div>
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
-                Decimal degrees — shown as a pin on the Station Map. Leave blank to auto-locate from the Location text.
+                Decimal degrees — shown as a pin on the Station Maps page. Leave blank to auto-locate from the Location text.
               </div>
             </div>
             <div>
