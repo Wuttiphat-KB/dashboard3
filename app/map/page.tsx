@@ -33,6 +33,30 @@ const TILES = {
 };
 const TILE_ATTR = '&copy; OpenStreetMap &copy; CARTO';
 
+// Teardrop map pin (SVG) coloured by status. Returned as a Leaflet divIcon
+// anchored at the tip so it points exactly at the coordinate. `scale` shrinks
+// the pin when zoomed out so the fleet overview isn't a wall of big pins.
+const PIN_W = 22, PIN_H = 30;
+function pinScaleForZoom(z: number): number {
+  return Math.max(0.5, Math.min(1, 0.5 + (z - 6) * 0.1));
+}
+function makePinIcon(L: any, color: string, scale = 1) {
+  const w = Math.round(PIN_W * scale), h = Math.round(PIN_H * scale);
+  const svg =
+    `<svg width="${w}" height="${h}" viewBox="0 0 22 30" xmlns="http://www.w3.org/2000/svg">
+       <path d="M11 0C4.93 0 0 4.93 0 11c0 7.7 11 19 11 19s11-11.3 11-19C22 4.93 17.07 0 11 0z"
+             fill="${color}" stroke="#0d1117" stroke-width="1.2"/>
+       <circle cx="11" cy="11" r="4" fill="#ffffff" fill-opacity="0.92"/>
+     </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: 'station-pin',
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],   // tip points at the coordinate
+    popupAnchor: [0, -h + 4],
+  });
+}
+
 interface MapStation {
   id: string;
   displayName: string;
@@ -74,6 +98,7 @@ export default function StationMapPage() {
   const mapRef     = useRef<any>(null);
   const tileRef    = useRef<any>(null);
   const markersRef = useRef<Map<string, any>>(new Map());
+  const colorRef   = useRef<Map<string, string>>(new Map());  // id → status colour, for zoom re-icon
 
   const [theme, setTheme]       = useState<'dark' | 'light'>('dark');
   const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -101,7 +126,9 @@ export default function StationMapPage() {
         displayName: s.displayName || s.name || s.id,
         location: s.location || '',
         status: statusById.get(s.id) ?? 'unknown',
-        // Prefer explicit lat/lng from config; fall back to the location lookup.
+        // Coordinate priority:
+        //   1) lat/lng stored on the station (Config field / spreadsheet import)
+        //   2) fall back to the location-text city lookup
         coords: Number.isFinite(s.lat) && Number.isFinite(s.lng)
           ? { lat: s.lat as number, lng: s.lng as number }
           : resolveCoords(s.location),
@@ -145,6 +172,13 @@ export default function StationMapPage() {
         const map = L.map(mapElRef.current, { zoomControl: true, attributionControl: true })
           .setView([THAILAND_CENTER.lat, THAILAND_CENTER.lng], 6);
         mapRef.current = map;
+        // Rescale all pins to the new zoom level (smaller when zoomed out).
+        map.on('zoomend', () => {
+          const scale = pinScaleForZoom(map.getZoom());
+          markersRef.current.forEach((mk, id) => {
+            mk.setIcon(makePinIcon(L, colorRef.current.get(id) || STATUS_HEX.unknown, scale));
+          });
+        });
         // Tiles are added by the [theme, mapStatus] effect below — keeps the
         // basemap in sync with the active theme without a capture race.
         setMapStatus('ready');
@@ -181,9 +215,9 @@ export default function StationMapPage() {
 
     for (const s of mapped) {
       const color = STATUS_HEX[s.status];
-      const marker = L.circleMarker([s.coords!.lat, s.coords!.lng], {
-        radius: 8, color: '#0d1117', weight: 1.5,
-        fillColor: color, fillOpacity: 0.95,
+      colorRef.current.set(s.id, color);
+      const marker = L.marker([s.coords!.lat, s.coords!.lng], {
+        icon: makePinIcon(L, color, pinScaleForZoom(map.getZoom())),
       }).addTo(map);
       marker.bindPopup(
         `<div style="font-family:monospace;min-width:170px">
@@ -210,12 +244,17 @@ export default function StationMapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mappedKey, mapStatus]);
 
-  // Recolor markers without refitting when only status changes.
+  // Recolor pins without refitting when only status changes.
   useEffect(() => {
-    if (mapStatus !== 'ready') return;
+    const w = window as any;
+    if (mapStatus !== 'ready' || !w.L || !mapRef.current) return;
+    const scale = pinScaleForZoom(mapRef.current.getZoom());
     for (const s of mapped) {
       const mk = markersRef.current.get(s.id);
-      if (mk) mk.setStyle({ fillColor: STATUS_HEX[s.status] });
+      if (mk) {
+        colorRef.current.set(s.id, STATUS_HEX[s.status]);
+        mk.setIcon(makePinIcon(w.L, STATUS_HEX[s.status], scale));
+      }
     }
   }, [mapStations, mapStatus, mapped]);
 
@@ -377,6 +416,8 @@ export default function StationMapPage() {
           background: var(--bg-elevated);
         }
         .map-canvas .leaflet-container { background: var(--bg-elevated); font-family: var(--font-geist-mono), monospace; }
+        .station-pin { background: transparent; border: none; }
+        .station-pin svg { display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
         .leaflet-popup-content-wrapper, .leaflet-popup-tip { border-radius: 6px; }
         @media (max-width: 900px) {
           .map-layout { grid-template-columns: 1fr; }
