@@ -18,6 +18,7 @@ const NAV_STATS = [
 ];
 
 const NAV_OVERVIEW = [
+  { href: '/map',                  label: 'Station Map',   abbr: 'MP' },
   { href: '/overview/heartbeat',   label: 'Heartbeat',     abbr: 'HB' },
   { href: '/overview/powermodule', label: 'Power Module',  abbr: 'PM' },
   { href: '/overview/meter',       label: 'Meter',         abbr: 'MT' },
