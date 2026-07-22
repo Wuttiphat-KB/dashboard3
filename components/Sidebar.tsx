@@ -14,7 +14,8 @@ const NAV_MAIN = [
 ];
 
 const NAV_STATS = [
-  { href: '/statistics/energy', label: 'Energy Usage', abbr: 'EU' },
+  { href: '/statistics/energy',      label: 'Energy Usage', abbr: 'EU' },
+  { href: '/statistics/peak-hours',  label: 'Peak Hours',   abbr: 'PH' },
 ];
 
 const NAV_OVERVIEW = [

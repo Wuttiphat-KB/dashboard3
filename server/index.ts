@@ -22,6 +22,7 @@ import { initScriptHbHandlers, checkScriptTimeouts, registerStatePlcCollection }
 import { checkAllAlerts, loadActiveAlertsFromDb } from './modules/alerts';
 import { backfillMeterChangedAt } from './modules/meter';
 import { startChargeAggregator, backfillStation } from './modules/chargeAggregator';
+import { startPeakHoursAggregator, backfillPeakStation } from './modules/peakHoursAggregator';
 import { initVectorHandler, registerVectorStation, unregisterVectorStation } from './modules/vector';
 import { onMessage } from './mqtt';
 import { MOCK_STATIONS } from '../lib/mockData';
@@ -403,6 +404,11 @@ async function main() {
   // Daily charge aggregator — pre-computes _charge_daily for today + yesterday.
   startChargeAggregator(() => currentStations);
 
+  // Hourly peak aggregator — pre-computes _peak_hourly buckets for fleet-wide
+  // peak-hours analytics. Backfill starts 5s after chargeAggregator to stagger
+  // Mongo load.
+  startPeakHoursAggregator(() => currentStations);
+
   // 7. Timeout checker (every 30s)
   setInterval(() => {
     checkTimeouts();
@@ -436,6 +442,7 @@ async function main() {
           // Fire-and-forget 30-day backfill so the new station gets historical
           // charging data right away (no restart needed).
           backfillStation(st).catch(() => {});
+          backfillPeakStation(st).catch(() => {});
         } else if (oldSig !== sig) {
           // Topics changed — unregister + re-register
           unregisterStation(st.id);

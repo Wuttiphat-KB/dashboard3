@@ -289,6 +289,14 @@ add_feature_box("ใช้งานง่าย รองรับมือถ�
     "เปิดบนมือถือได้ทันที (Responsive Design)",
 ])
 
+add_feature_box("แผนที่ตำแหน่งตู้ (Station Maps)", [
+    "แสดงตู้ทุกตัวบนแผนที่จริง (OpenStreetMap)",
+    "หมุดบอกสีตามสถานะ: เขียว/เหลือง/แดง/เทา — เห็นภาพรวมทั่วประเทศในหน้าเดียว",
+    "คลิกหมุด → popup แสดงข้อมูลตู้ + ลิงก์เข้าหน้ารายละเอียด",
+    "Basemap ปรับตามธีม Dark/Light อัตโนมัติ",
+    "หมุนซูมและค้นหาตู้บนแผนที่ได้",
+])
+
 add_feature_box("ความปลอดภัยและสิทธิ์การเข้าถึง", [
     "ระบบ Login (Username + Password) ก่อนเข้าทุกหน้า",
     "Session มีอายุ 7 วัน รักษาความปลอดภัยด้วยลายเซ็น HMAC",
@@ -313,7 +321,7 @@ tbl.autofit = True
 headers = [
     ("หมวด Navigation", ["Overview (ภาพรวมทุกตู้)", "Alert Center (ศูนย์การแจ้งเตือน)", "Station Config (เพิ่ม/แก้ไขตู้)", "Settings (ตั้งค่าทั่วไป)"]),
     ("หมวด Statistics", ["Energy Usage (รายงานพลังงาน + จำนวนการชาร์จ)"]),
-    ("หมวด System Overview", ["Heartbeat (ตรวจสถานะอุปกรณ์ในตู้)", "Power Module (จำนวนโมดูลที่ใช้งาน)", "Meter (มิเตอร์พลังงาน)", "Temperature (อุณหภูมิ Router)", "Fan RPM (รอบพัดลม)", "Device Status (สถานะอุปกรณ์ + อุณหภูมิสาย)", "MQTT Scripts (สถานะสคริปต์เบื้องหลัง)"]),
+    ("หมวด System Overview", ["Station Maps (แผนที่ตำแหน่งตู้บนแผนที่ประเทศไทย)", "Heartbeat (ตรวจสถานะอุปกรณ์ในตู้)", "Power Module (จำนวนโมดูลที่ใช้งาน)", "Meter (มิเตอร์พลังงาน)", "Temperature (อุณหภูมิ Router)", "Fan RPM (รอบพัดลม)", "Device Status (สถานะอุปกรณ์ + อุณหภูมิสาย)", "MQTT Scripts (สถานะสคริปต์เบื้องหลัง)"]),
     ("หมวด Station Detail", ["รายละเอียดในตู้ — 7 แท็บข้อมูลของตู้นั้นๆ"]),
 ]
 for i, (cat, items) in enumerate(headers):
@@ -375,8 +383,29 @@ add_page_section_table(
     ],
 )
 
+# ─── Station Maps ───
+add_h2("4.3 หน้า Station Maps (แผนที่ตำแหน่งตู้)")
+add_page_section_table(
+    "ดูตำแหน่งตู้ทุกตัวบนแผนที่จริง — เห็นภาพรวมทั้งประเทศ",
+    [
+        "แผนที่ OpenStreetMap เต็มหน้าจอ (พื้นหลังสีเข้ม/สว่างตามธีม)",
+        "หมุด (Pin) ทีดร็อปสีตามสถานะตู้แต่ละตัว",
+        "  🟢 เขียว = Online   🟡 เหลือง = Degraded   🔴 แดง = Offline   ⚫ เทา = ไม่มีข้อมูลพิกัด",
+        "หมุนซูม/แพนแผนที่ได้อิสระ, หมุดปรับขนาดตาม zoom",
+        "คลิกหมุด → popup แสดง ชื่อตู้ / สถานะ / ปุ่ม 'View Station' ลิงก์เข้าหน้ารายละเอียด",
+        "แถบค้นหาด้านข้าง — พิมพ์ชื่อตู้แล้วกด → แผนที่ pan+zoom ไปที่ตู้นั้นทันที",
+        "รายการตู้เรียงตามตัวอักษร ด้านข้าง — คลิกเพื่อโฟกัสหมุด",
+    ],
+    [
+        "ผู้บริหารเห็นการกระจายตู้ในเครือข่ายในภาพเดียว",
+        "วางแผนการติดตั้งตู้ใหม่ในโซนที่ยังขาด",
+        "ทีมภาคสนามใช้เป็น 'แผนที่ยุทธการ' ไปดูตู้เสียในพื้นที่ได้",
+        "ลูกค้าปลายทาง (เจ้าของตู้) เห็นเครือข่ายของตัวเองในภาพรวม",
+    ],
+)
+
 # ─── System Overview / Heartbeat ───
-add_h2("4.3 หน้า Heartbeat")
+add_h2("4.4 หน้า Heartbeat")
 add_page_section_table(
     "สถานะการสื่อสารของอุปกรณ์ในตู้",
     [
@@ -392,7 +421,7 @@ add_page_section_table(
 )
 
 # ─── Power Module ───
-add_h2("4.4 หน้า Power Module")
+add_h2("4.5 หน้า Power Module")
 add_page_section_table(
     "จำนวนโมดูลกำลังที่ใช้งานต่อหัวชาร์จ",
     [
@@ -408,7 +437,7 @@ add_page_section_table(
 )
 
 # ─── Meter ───
-add_h2("4.5 หน้า Meter")
+add_h2("4.6 หน้า Meter")
 add_page_section_table(
     "มิเตอร์พลังงานสะสมของแต่ละหัวชาร์จ",
     [
@@ -424,7 +453,7 @@ add_page_section_table(
 )
 
 # ─── Temperature ───
-add_h2("4.6 หน้า Temperature")
+add_h2("4.7 หน้า Temperature")
 add_page_section_table(
     "อุณหภูมิ Router ในตู้",
     [
@@ -440,7 +469,7 @@ add_page_section_table(
 )
 
 # ─── Fan RPM ───
-add_h2("4.7 หน้า Fan RPM")
+add_h2("4.8 หน้า Fan RPM")
 add_page_section_table(
     "รอบการทำงานของพัดลมระบายความร้อน",
     [
@@ -456,7 +485,7 @@ add_page_section_table(
 )
 
 # ─── Device Status (Vector + safety) ───
-add_h2("4.8 หน้า Device Status (สำหรับตู้ Vector)")
+add_h2("4.9 หน้า Device Status (สำหรับตู้ Vector)")
 add_page_section_table(
     "ภาพรวมความปลอดภัยของตู้ — สถานะอุปกรณ์ + อุณหภูมิสายชาร์จ",
     [
@@ -474,7 +503,7 @@ add_page_section_table(
 )
 
 # ─── MQTT Scripts ───
-add_h2("4.9 หน้า MQTT Scripts")
+add_h2("4.10 หน้า MQTT Scripts")
 add_page_section_table(
     "สถานะของสคริปต์เบื้องหลังในตู้",
     [
@@ -489,7 +518,7 @@ add_page_section_table(
 )
 
 # ─── Statistics — Energy Usage ───
-add_h2("4.10 หน้า Energy Usage (รายงานการขายพลังงาน)")
+add_h2("4.11 หน้า Energy Usage (รายงานการขายพลังงาน)")
 add_page_section_table(
     "รายงานพลังงานและจำนวนการชาร์จย้อนหลัง",
     [
@@ -509,7 +538,7 @@ add_page_section_table(
 )
 
 # ─── Station Detail ───
-add_h2("4.11 หน้า Station Detail — รายตู้")
+add_h2("4.12 หน้า Station Detail — รายตู้")
 add_page_section_table(
     "เข้าดูข้อมูลในตู้ตู้เดียวอย่างละเอียด (มี 7 แท็บ)",
     [
@@ -528,7 +557,7 @@ add_page_section_table(
 )
 
 # ─── Alert Center ───
-add_h2("4.12 หน้า Alert Center")
+add_h2("4.13 หน้า Alert Center")
 add_page_section_table(
     "รวมการแจ้งเตือนทั้งหมดในที่เดียว",
     [
@@ -544,7 +573,7 @@ add_page_section_table(
 )
 
 # ─── Station Config ───
-add_h2("4.13 หน้า Station Config")
+add_h2("4.14 หน้า Station Config")
 add_page_section_table(
     "หน้าเพิ่ม / แก้ไข / ลบสถานี (มี PIN gate)",
     [
@@ -563,7 +592,7 @@ add_page_section_table(
 )
 
 # ─── Settings ───
-add_h2("4.14 หน้า Settings")
+add_h2("4.15 หน้า Settings")
 add_page_section_table(
     "ตั้งค่าระบบรวม",
     [
