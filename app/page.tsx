@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useFleet, FleetStation } from '@/lib/hooks/useFleet';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
 
 function StatusDot({ status }: { status: 'online' | 'degraded' | 'offline' }) {
   const map = {
@@ -44,7 +45,10 @@ function StationCard({ item }: { item: FleetStation }) {
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName}</div>
+            <ZerotierCopy ip={station.zerotierIp} />
+          </div>
           <StatusDot status={status} />
         </div>
 

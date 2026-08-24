@@ -276,6 +276,7 @@ export async function GET() {
           id: st.id,
           name: st.name,
           displayName: st.displayName || st.name,
+          zerotierIp: st.zerotierIp || '',
           chargerHeads: st.chargerHeads || 2,
           expectedPmPerHead: st.expectedPmPerHead || 3,
           expectedPmHead1: st.expectedPmHead1 ?? st.expectedPmPerHead ?? 3,

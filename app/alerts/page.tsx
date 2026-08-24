@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useStations } from '@/lib/hooks/useStations';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
 import { Alert } from '@/lib/types';
 import { fmtTs, timeSince } from '@/lib/formatTime';
 
@@ -32,6 +34,15 @@ export default function AlertsPage() {
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState<'all' | 'unack' | 'critical' | 'warning'>('unack');
   const [error, setError]       = useState<string | null>(null);
+
+  // Alerts carry only the station id/name — pull ZeroTier IPs from the station
+  // config so each row can offer the same copy button as the other pages.
+  const { stations } = useStations();
+  const ztById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of stations) if (s.zerotierIp) m.set(s.id, s.zerotierIp);
+    return m;
+  }, [stations]);
 
   const load = useCallback(async () => {
     try {
@@ -177,6 +188,7 @@ export default function AlertsPage() {
                   >
                     {alert.stationName || alert.stationId} →
                   </Link>
+                  <ZerotierCopy ip={ztById.get(alert.stationId)} />
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>{alert.message}</div>
                 <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>

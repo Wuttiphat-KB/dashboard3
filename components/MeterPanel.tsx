@@ -29,7 +29,8 @@ function MeterGauge({ valueWh, label, led, stalled, timestamp }: {
   const kwh      = WH_TO_KWH(valueWh);
   const pct      = Math.min((kwh / METER_MAX_KWH) * 100, 100);
   const ledColor = led === 'ok' ? 'var(--ok)' : 'var(--error)';
-  const barColor = pct > 85 ? 'var(--error)' : pct > 65 ? 'var(--warn)' : 'var(--ok)';
+  // Tip color scales with fill: low = yellow (--warn), high = green (--ok)
+  const barTip   = `color-mix(in srgb, var(--ok) ${pct.toFixed(0)}%, var(--warn))`;
 
   return (
     <div style={{
@@ -74,7 +75,7 @@ function MeterGauge({ valueWh, label, led, stalled, timestamp }: {
         <div style={{ height: 14, background: 'var(--bg-base)', borderRadius: 7, overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
           <div style={{
             height: '100%', width: `${pct}%`, borderRadius: 7,
-            background: `linear-gradient(90deg, var(--ok), ${barColor})`,
+            background: `linear-gradient(90deg, var(--warn), ${barTip})`,
             transition: 'width 0.5s ease',
           }} />
         </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useStations } from '@/lib/hooks/useStations';
 import SearchSelect from '@/components/ui/SearchSelect';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
 import EnergyChart, { EnergyPoint } from '@/components/ui/EnergyChart';
 
 interface DailyAgg {
@@ -149,7 +150,7 @@ export default function ChargingReportPage() {
 
           <div style={{ flex: 1, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' }}>
             {selectedStation && (
-              <>Showing <strong style={{ color: 'var(--text-secondary)' }}>{selectedStation.displayName || selectedStation.name}</strong> · {range.start} → {range.end}</>
+              <>Showing <strong style={{ color: 'var(--text-secondary)' }}>{selectedStation.displayName || selectedStation.name}</strong>{' '}<ZerotierCopy ip={selectedStation.zerotierIp} /> · {range.start} → {range.end}</>
             )}
           </div>
         </div>

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useStations } from '@/lib/hooks/useStations';
 import { invalidateStations } from '@/lib/hooks/dataCache';
 import { Station } from '@/lib/types';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
 
 const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   name: '',
@@ -12,6 +13,7 @@ const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   location: '',
   lat: undefined,
   lng: undefined,
+  zerotierIp: '',
   chargerHeads: 2,
   expectedPmPerHead: 3,
   expectedPmHead1: 3,
@@ -371,6 +373,7 @@ function ConfigPageInner() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName || station.name}</span>
+                    <ZerotierCopy ip={station.zerotierIp} />
                     <span className="badge badge-info" style={{ fontSize: 10 }}>{station.name}</span>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                       {station.chargerHeads} heads · Fan {station.fanBrand} · HMI {station.hmiBrand || 'Phoenix'} · Controller {(station.controllerType || 'phoenix') === 'vector' ? 'Vector' : 'Phoenix'}
@@ -472,6 +475,10 @@ function ConfigPageInner() {
                 Decimal degrees — shown as a pin on the Station Maps page. Leave blank to auto-locate from the Location text.
               </div>
             </div>
+            <InputRow label="ZeroTier IP"
+              value={form.zerotierIp ?? ''} onChange={v => setForm(f => ({ ...f, zerotierIp: v }))}
+              placeholder="e.g. 10.147.20.13" mono={true}
+              hint="Remote-access address on the ZeroTier network — shown with a copy button on the station page" />
             <div>
               <label className="input-label">Number of Charger Heads</label>
               <input className="input" type="number" min={1} max={8}

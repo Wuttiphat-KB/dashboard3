@@ -11,6 +11,7 @@ import TempPanel        from '@/components/TempPanel';
 import FanRPMPanel      from '@/components/FanRPMPanel';
 import MqttScriptPanel  from '@/components/MqttScriptPanel';
 import PlcPanel         from '@/components/PlcPanel';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
 const TABS = [
   { id: 'heartbeat',   label: '♡  Heartbeat'     },
   { id: 'powermodule', label: '⚡ Power Module'   },
@@ -82,6 +83,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
               <h1 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{station.displayName}</h1>
+              <ZerotierCopy ip={station.zerotierIp} size={20} />
               <span className={`badge ${badge}`}>
                 <span className={`led ${led}`} />
                 {status.toUpperCase()}
@@ -89,6 +91,22 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
               {station.chargerHeads} charger head{station.chargerHeads > 1 ? 's' : ''} · Router: {data.routerData.connstate}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ZeroTier</span>
+              {station.zerotierIp ? (
+                <span style={{
+                  fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-geist-mono), monospace',
+                  color: 'var(--text-secondary)', background: 'var(--bg-elevated)',
+                  padding: '3px 8px', borderRadius: 'var(--radius-sm)',
+                }}>
+                  {station.zerotierIp}
+                </span>
+              ) : (
+                <Link href={`/config?edit=${station.id}`} style={{ fontSize: 11, color: 'var(--text-muted)', textDecoration: 'none' }}>
+                  not set — add in Config
+                </Link>
+              )}
             </div>
           </div>
           <Link href={`/config?edit=${station.id}`} className="btn btn-secondary btn-sm">◧ Config</Link>

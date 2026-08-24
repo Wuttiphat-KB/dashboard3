@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useStations } from '@/lib/hooks/useStations';
 import { useFleet } from '@/lib/hooks/useFleet';
 import { resolveCoords, THAILAND_CENTER, LatLng } from '@/lib/stationGeo';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
+import { copyText } from '@/lib/clipboard';
 
 type Status = 'online' | 'degraded' | 'offline' | 'unknown';
 
@@ -61,6 +63,7 @@ interface MapStation {
   id: string;
   displayName: string;
   location: string;
+  zerotierIp?: string;
   status: Status;
   coords: LatLng | null;
 }
@@ -115,6 +118,23 @@ export default function StationMapPage() {
     return () => obs.disconnect();
   }, []);
 
+  // Leaflet popups are raw HTML injected by Leaflet, so they can't host a React
+  // component — one delegated listener drives the clipboard button inside them.
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement | null)?.closest?.('[data-zt-copy]') as HTMLElement | null;
+      if (!btn) return;
+      e.preventDefault();
+      const ip = btn.getAttribute('data-zt-copy') || '';
+      copyText(ip).then(ok => {
+        btn.textContent = ok ? '✓' : '✕';
+        setTimeout(() => { btn.textContent = '📋'; }, 1500);
+      });
+    };
+    document.addEventListener('click', onClick);
+    return () => document.removeEventListener('click', onClick);
+  }, []);
+
   // Build the merged station list (config location + live fleet status).
   const mapStations = useMemo<MapStation[]>(() => {
     const statusById = new Map<string, Status>();
@@ -125,6 +145,7 @@ export default function StationMapPage() {
         id: s.id,
         displayName: s.displayName || s.name || s.id,
         location: s.location || '',
+        zerotierIp: s.zerotierIp,
         status: statusById.get(s.id) ?? 'unknown',
         // Coordinate priority:
         //   1) lat/lng stored on the station (Config field / spreadsheet import)
@@ -149,11 +170,12 @@ export default function StationMapPage() {
 
   const mapped   = useMemo(() => filtered.filter(s => s.coords), [filtered]);
   const unmapped = useMemo(() => mapStations.filter(s => !s.coords), [mapStations]);
-  // Stable signature of which stations are on the map (ids + coords). Markers
-  // rebuild + the view refits only when this changes (search / data), not on
-  // every 30s status poll (status isn't part of the key).
+  // Stable signature of which stations are on the map (ids + coords + the
+  // ZeroTier IP the popup shows). Markers rebuild + the view refits only when
+  // this changes (search / data), not on every 30s status poll (status isn't
+  // part of the key).
   const mappedKey = useMemo(
-    () => mapped.map(s => `${s.id}:${s.coords!.lat},${s.coords!.lng}`).join('|'),
+    () => mapped.map(s => `${s.id}:${s.coords!.lat},${s.coords!.lng}:${s.zerotierIp ?? ''}`).join('|'),
     [mapped],
   );
 
@@ -228,6 +250,7 @@ export default function StationMapPage() {
              ${STATUS_LABEL[s.status]}
            </div>
            <div style="font-size:10px;color:#888;margin-bottom:6px">📍 ${fmtCoords(s.coords!)}</div>
+           ${s.zerotierIp ? `<div style="font-size:11px;margin-bottom:6px">ZeroTier <span style="font-family:monospace">${escapeHtml(s.zerotierIp)}</span> <button type="button" data-zt-copy="${escapeHtml(s.zerotierIp)}" title="Copy ZeroTier IP" style="cursor:pointer;border:1px solid #ccc;border-radius:4px;background:transparent;padding:0 4px;font-size:11px">📋</button></div>` : ''}
            <a href="/station/${encodeURIComponent(s.id)}" style="color:#0969da;font-size:11px">View station →</a>
          </div>`
       );
@@ -332,15 +355,19 @@ export default function StationMapPage() {
                       padding: '9px 12px',
                     }}
                   >
-                    <button
-                      onClick={() => focusStation(s)}
-                      disabled={!s.coords}
+                    {/* div, not button — the ZerotierCopy button nests inside */}
+                    <div
+                      role="button"
+                      tabIndex={s.coords ? 0 : -1}
+                      aria-disabled={!s.coords}
+                      onClick={() => { if (s.coords) focusStation(s); }}
+                      onKeyDown={e => {
+                        if (s.coords && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); focusStation(s); }
+                      }}
                       title={s.coords ? 'Show on map' : 'No location data'}
                       style={{
-                        flex: 1, minWidth: 0, textAlign: 'left', cursor: s.coords ? 'pointer' : 'default',
-                        background: 'transparent', border: 'none', padding: 0,
+                        flex: 1, minWidth: 0, cursor: s.coords ? 'pointer' : 'default',
                         display: 'flex', alignItems: 'center', gap: 9,
-                        color: 'inherit', fontFamily: 'var(--font-geist-mono), monospace',
                         opacity: s.coords ? 1 : 0.55,
                       }}
                     >
@@ -350,8 +377,11 @@ export default function StationMapPage() {
                         boxShadow: s.status !== 'unknown' ? `0 0 6px ${STATUS_HEX[s.status]}` : 'none',
                       }} />
                       <span style={{ minWidth: 0, flex: 1 }}>
-                        <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {s.displayName}
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {s.displayName}
+                          </span>
+                          <ZerotierCopy ip={s.zerotierIp} />
                         </span>
                         <span style={{ display: 'block', fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {s.location || '— no location —'}
@@ -360,7 +390,7 @@ export default function StationMapPage() {
                           {s.coords ? `📍 ${fmtCoords(s.coords)}` : '—'}
                         </span>
                       </span>
-                    </button>
+                    </div>
                     <Link
                       href={`/station/${encodeURIComponent(s.id)}`}
                       title="View station"
