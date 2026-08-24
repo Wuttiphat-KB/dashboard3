@@ -297,6 +297,14 @@ add_feature_box("แผนที่ตำแหน่งตู้ (Station Maps)
     "หมุนซูมและค้นหาตู้บนแผนที่ได้",
 ])
 
+add_feature_box("วิเคราะห์ Peak Hours ระดับเครือข่าย", [
+    "ดูภาพรวมทั้งเครือข่าย — ช่วงเวลาไหนคนใช้เยอะสุด",
+    "Bar chart 24 ชั่วโมง — เห็น peak time ในสายตาเดียว",
+    "Heatmap 7×24 (วัน × ชั่วโมง) — เปรียบเทียบเสาร์-อาทิตย์ กับวันธรรมดา",
+    "Insight อัตโนมัติ: 'peak hour 18:00 กิน 34% ของพลังงานรวม'",
+    "ใช้วางแผน pricing / บำรุงรักษา / demand-shifting strategy",
+])
+
 add_feature_box("ความปลอดภัยและสิทธิ์การเข้าถึง", [
     "ระบบ Login (Username + Password) ก่อนเข้าทุกหน้า",
     "Session มีอายุ 7 วัน รักษาความปลอดภัยด้วยลายเซ็น HMAC",
@@ -320,7 +328,7 @@ tbl = doc.add_table(rows=4, cols=2)
 tbl.autofit = True
 headers = [
     ("หมวด Navigation", ["Overview (ภาพรวมทุกตู้)", "Alert Center (ศูนย์การแจ้งเตือน)", "Station Config (เพิ่ม/แก้ไขตู้)", "Settings (ตั้งค่าทั่วไป)"]),
-    ("หมวด Statistics", ["Energy Usage (รายงานพลังงาน + จำนวนการชาร์จ)"]),
+    ("หมวด Statistics", ["Energy Usage (รายงานพลังงาน + จำนวนการชาร์จ)", "Peak Hours (ชั่วโมงเร่งด่วนของเครือข่าย — Bar + Heatmap)"]),
     ("หมวด System Overview", ["Station Maps (แผนที่ตำแหน่งตู้บนแผนที่ประเทศไทย)", "Heartbeat (ตรวจสถานะอุปกรณ์ในตู้)", "Power Module (จำนวนโมดูลที่ใช้งาน)", "Meter (มิเตอร์พลังงาน)", "Temperature (อุณหภูมิ Router)", "Fan RPM (รอบพัดลม)", "Device Status (สถานะอุปกรณ์ + อุณหภูมิสาย)", "MQTT Scripts (สถานะสคริปต์เบื้องหลัง)"]),
     ("หมวด Station Detail", ["รายละเอียดในตู้ — 7 แท็บข้อมูลของตู้นั้นๆ"]),
 ]
@@ -537,8 +545,34 @@ add_page_section_table(
     ],
 )
 
+# ─── Statistics — Peak Hours ───
+add_h2("4.12 หน้า Peak Hours (ชั่วโมงเร่งด่วนของเครือข่าย)")
+add_page_section_table(
+    "วิเคราะห์ว่า 'ช่วงเวลาไหน' คนใช้ตู้ในเครือข่ายเยอะสุด — ระดับ Fleet-wide",
+    [
+        "เลือกช่วงเวลา: 7 วัน / 30 วัน / เดือนนี้",
+        "Summary 4 tiles: Peak Hour / Peak Day / Total kWh / จำนวนสถานีที่มีข้อมูล",
+        "Insight sticker — ประโยคสรุปอัตโนมัติ เช่น \"Peak hour 18:00–19:00 กิน 34% ของพลังงานรวม\"",
+        "Chart 1 — Bar chart 24 แท่ง (00–23 น.) แสดง kWh รวมของแต่ละชั่วโมง",
+        "  แท่งสีเหลือง = peak hour (สูงสุดในช่วงเวลาที่เลือก)",
+        "  Tooltip แสดง Total kWh + Avg/day ต่อชั่วโมงนั้น",
+        "Chart 2 — Heatmap 7×24 (Sun–Sat × 00–23 น.)",
+        "  ช่องสีเข้ม = kWh สูง (gradient sky → blue → amber)",
+        "  Row/column headers เน้นสีเหลืองที่ peak day / peak hour",
+        "  Hover ดูค่า kWh + % ของ max intensity",
+        "เวลาแสดงเป็นเวลาไทย (ICT/UTC+7) เพื่อให้ตรงกับพฤติกรรมผู้ใช้จริง",
+    ],
+    [
+        "รู้ว่า 'peak time' ของเครือข่ายอยู่ช่วงไหน → ใช้วางแผน pricing (charge premium ช่วง peak)",
+        "รู้ 'peak day of week' → ใช้วางแผนบำรุงรักษาให้อยู่ในวัน off-peak (ไม่กระทบรายได้)",
+        "เห็น pattern เสาร์-อาทิตย์ vs วันธรรมดา → วางแผน staffing ภาคสนามได้",
+        "% contribution ของ peak hour → ใช้ตัดสินใจ demand-shifting strategy (เช่น incentive ให้ชาร์จช่วงกลางวัน)",
+        "ประกอบการตัดสินใจขยายกำลังไฟฟ้าเข้าตู้ (ถ้า peak ใกล้ max capacity)",
+    ],
+)
+
 # ─── Station Detail ───
-add_h2("4.12 หน้า Station Detail — รายตู้")
+add_h2("4.13 หน้า Station Detail — รายตู้")
 add_page_section_table(
     "เข้าดูข้อมูลในตู้ตู้เดียวอย่างละเอียด (มี 7 แท็บ)",
     [
@@ -557,7 +591,7 @@ add_page_section_table(
 )
 
 # ─── Alert Center ───
-add_h2("4.13 หน้า Alert Center")
+add_h2("4.14 หน้า Alert Center")
 add_page_section_table(
     "รวมการแจ้งเตือนทั้งหมดในที่เดียว",
     [
@@ -573,7 +607,7 @@ add_page_section_table(
 )
 
 # ─── Station Config ───
-add_h2("4.14 หน้า Station Config")
+add_h2("4.15 หน้า Station Config")
 add_page_section_table(
     "หน้าเพิ่ม / แก้ไข / ลบสถานี (มี PIN gate)",
     [
@@ -592,7 +626,7 @@ add_page_section_table(
 )
 
 # ─── Settings ───
-add_h2("4.15 หน้า Settings")
+add_h2("4.16 หน้า Settings")
 add_page_section_table(
     "ตั้งค่าระบบรวม",
     [
