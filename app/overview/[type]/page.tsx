@@ -4,6 +4,7 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { useFleet } from '@/lib/hooks/useFleet';
 import { StationDashboardData, Station, METER_MAX_KWH } from '@/lib/types';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
 
 const OVERVIEW_TYPES = [
   { id: 'heartbeat',   label: 'Heartbeat'    },
@@ -53,7 +54,10 @@ function Shell({ station, data, children, customBadge, borderColor }: {
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName}</div>
+            <ZerotierCopy ip={station.zerotierIp} />
+          </div>
         </div>
         {customBadge ?? <StatusBadge status={st} />}
       </div>
@@ -205,13 +209,6 @@ function PowerModuleCard({ station, data }: { station: Station; data: StationDas
 // ── Meter ─────────────────────────────────────────────────────────────────────
 // Status here = "stalled" (no value change > 2 days), NOT online/offline.
 
-/** Smooth gradient: 0% green → 50% yellow → 100% red */
-function gaugeGradient(pct: number): string {
-  // Hue: 120 (green) at 0%, 60 (yellow) at 50%, 0 (red) at 100%
-  const hue = Math.max(0, Math.min(120, 120 - (pct * 1.2)));
-  return `hsl(${hue}, 70%, 50%)`;
-}
-
 function MeterCard({ station, data }: { station: Station; data: StationDashboardData }) {
   // Stalled flags come from API (server-side compared >2-day-old doc)
   const meterMeta = (data as any).__meterMeta || {};
@@ -245,7 +242,10 @@ function MeterCard({ station, data }: { station: Station; data: StationDashboard
       {meters.map(({ n, stalled, val, ts }) => {
         const pct = Math.min((val / 1000 / METER_MAX_KWH) * 100, 100);
         const ledColor = stalled ? 'var(--error)' : 'var(--ok)';
-        const fillColor = stalled ? 'var(--error)' : gaugeGradient(pct);
+        // Tip color scales with fill: low = yellow (--warn), high = green (--ok)
+        const fillColor = stalled
+          ? 'var(--error)'
+          : `linear-gradient(90deg, var(--warn), color-mix(in srgb, var(--ok) ${pct.toFixed(0)}%, var(--warn)))`;
         return (
           <div key={n} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -700,6 +700,7 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
   const allData = fleet.map(fl => {
     const station: Station = {
       id: fl.station.id, name: fl.station.name, displayName: fl.station.displayName,
+      zerotierIp: fl.station.zerotierIp,
       location: '', chargerHeads: fl.station.chargerHeads,
       expectedPmPerHead: fl.station.expectedPmPerHead,
       expectedPmHead1: fl.station.expectedPmHead1 ?? fl.station.expectedPmPerHead,

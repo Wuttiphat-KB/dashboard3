@@ -28,7 +28,9 @@ export function useStations() {
   const c = getStations();
   return {
     stations: c.data || [],
-    loading: c.loading && !c.data,
+    // Derived from data/error only — c.loading differs between SSR and the
+    // first client render (hydration mismatch)
+    loading: !c.data && !c.error,
   };
 }
 
@@ -48,7 +50,7 @@ export function useDashboard(stationId: string) {
 
   return {
     data,
-    loading: c.loading && !c.data,
+    loading: !c.data && !c.error,
   };
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useSyncExternalStore } from 'react';
+import { useState, useEffect } from 'react';
 import { getFleet, subscribe } from './dataCache';
 
 export interface FleetStation {
@@ -8,6 +8,7 @@ export interface FleetStation {
     id: string;
     name: string;
     displayName: string;
+    zerotierIp?: string;
     chargerHeads: number;
     expectedPmPerHead: number;
     expectedPmHead1: number;
@@ -94,7 +95,10 @@ export function useFleet() {
   const c = getFleet();
   return {
     fleet: c.data || [],
-    loading: c.loading && !c.data,  // only show loading if NO data yet
+    // Derived from data/error only — c.loading flips synchronously during the
+    // first client render (render-body fetch) but is false during SSR, which
+    // caused a hydration mismatch
+    loading: !c.data && !c.error,
     error: c.error,
   };
 }
