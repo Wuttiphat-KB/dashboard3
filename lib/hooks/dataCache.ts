@@ -82,8 +82,16 @@ async function fetchAndCache<T>(c: CacheEntry<T>, url: string): Promise<T> {
 }
 
 // ── Invalidation API (called by WebSocket listener for realtime updates) ──
-// Throttled to avoid stampeding the API on burst MQTT traffic
-const INVALIDATE_THROTTLE_MS = 1500;
+// AppShell calls invalidateFleet() on EVERY WS message, and ~200 stations push
+// heartbeat/meter/PM/PLC traffic continuously — so this throttle is really "how
+// often does each open tab refetch the whole fleet, forever". At the old 1.5s,
+// 17 connected tabs kept ~17 rebuilds of /api/fleet permanently in flight and
+// buried Mongo. These intervals are matched to how fast the data behind each
+// endpoint actually changes; /api/fleet is additionally cached server-side for
+// 10s (lib/apiCache), so a refetch inside that window costs no Mongo work.
+const FLEET_THROTTLE_MS     = 10_000;
+const DASHBOARD_THROTTLE_MS = 4_000;
+const STATIONS_THROTTLE_MS  = 60_000;   // station configs change only on save
 const lastInvalidate: { fleet: number; stations: number; dashboard: Map<string, number> } = {
   fleet: 0,
   stations: 0,
@@ -92,7 +100,7 @@ const lastInvalidate: { fleet: number; stations: number; dashboard: Map<string, 
 
 export function invalidateFleet(): void {
   const now = Date.now();
-  if (now - lastInvalidate.fleet < INVALIDATE_THROTTLE_MS) return;
+  if (now - lastInvalidate.fleet < FLEET_THROTTLE_MS) return;
   lastInvalidate.fleet = now;
   fleetCache.timestamp = 0;
   fetchAndCache<FleetStation[]>(fleetCache, '/api/fleet').catch(() => {});
@@ -101,7 +109,7 @@ export function invalidateFleet(): void {
 export function invalidateDashboard(stationId: string): void {
   const now = Date.now();
   const prev = lastInvalidate.dashboard.get(stationId) || 0;
-  if (now - prev < INVALIDATE_THROTTLE_MS) return;
+  if (now - prev < DASHBOARD_THROTTLE_MS) return;
   lastInvalidate.dashboard.set(stationId, now);
   const c = dashboardCache.get(stationId);
   if (!c) return;
@@ -111,7 +119,7 @@ export function invalidateDashboard(stationId: string): void {
 
 export function invalidateStations(): void {
   const now = Date.now();
-  if (now - lastInvalidate.stations < INVALIDATE_THROTTLE_MS) return;
+  if (now - lastInvalidate.stations < STATIONS_THROTTLE_MS) return;
   lastInvalidate.stations = now;
   stationsCache.timestamp = 0;
   fetchAndCache<Station[]>(stationsCache, '/api/stations').catch(() => {});

@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
+import { cachedResponse } from '@/lib/apiCache';
 
 const STATION_DB = 'Station';
+
+// This route is refetched by every open station page on WebSocket traffic, and
+// it reads history collections that hold millions of docs. Cache per station so
+// N viewers of the same station cost one rebuild, and cap every unbounded query
+// so a single slow collection can't hold a Mongo pool slot for minutes.
+const DASH_TTL_MS       = 5_000;
+const DASH_MAX_STALE_MS = 120_000;
+const QUERY_MS          = 5_000;
+
+/** Thrown when the station id doesn't exist — mapped to a 404 by GET. */
+class StationNotFound extends Error {}
 
 // Real MongoDB structure: separate databases per data type, collection = station name
 const DATA_DBS = {
@@ -13,13 +25,8 @@ const DATA_DBS = {
   plc:          'PlcDatabase',
 } as const;
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-
-  try {
+async function buildDashboard(id: string) {
+  {
     const client = await getMongoClient();
 
     // 1. Find station config from db=Station
@@ -29,20 +36,26 @@ export async function GET(
       $or: [{ id }, { name: id }],
     }).catch(() => null);
 
-    // SLOW FALLBACK: scan per-station collections (only if backend hasn't populated _stations yet)
+    // SLOW FALLBACK: scan per-station collections — 230 serial findOne()s, so only
+    // run it when the _stations mirror is genuinely empty. A miss against a
+    // populated mirror means the id doesn't exist, and rescanning every
+    // collection on each such request is how one bad URL stalls the whole app.
     if (!stationConfig) {
-      const allCols = await stationDb.listCollections().toArray();
-      for (const col of allCols) {
-        if (col.name.startsWith('system.') || col.name.startsWith('_')) continue;
-        const doc = await stationDb.collection(col.name).findOne({
-          $or: [{ id }, { name: id }],
-        });
-        if (doc) { stationConfig = doc; break; }
+      const mirrorSize = await stationDb.collection('_stations').estimatedDocumentCount().catch(() => 0);
+      if (mirrorSize === 0) {
+        const allCols = await stationDb.listCollections().toArray();
+        for (const col of allCols) {
+          if (col.name.startsWith('system.') || col.name.startsWith('_')) continue;
+          const doc = await stationDb.collection(col.name).findOne({
+            $or: [{ id }, { name: id }],
+          });
+          if (doc) { stationConfig = doc; break; }
+        }
       }
     }
 
     if (!stationConfig) {
-      return NextResponse.json({ error: `Station ${id} not found` }, { status: 404 });
+      throw new StationNotFound(`Station ${id} not found`);
     }
 
     // Per-database collection name (each db may use a different collection)
@@ -64,32 +77,32 @@ export async function GET(
     ] = await Promise.all([
       // Heartbeat — latest 50 for edge history
       client.db(DATA_DBS.heartbeat).collection(colHeartbeat)
-        .find().sort({ _id: -1 }).limit(50).toArray()
+        .find().sort({ _id: -1 }).limit(50).maxTimeMS(QUERY_MS).toArray()
         .catch(() => []),
 
       // Meter — latest 200 for charts
       client.db(DATA_DBS.meter).collection(colMeter)
-        .find().sort({ _id: -1 }).limit(200).toArray()
+        .find().sort({ _id: -1 }).limit(200).maxTimeMS(QUERY_MS).toArray()
         .catch(() => []),
 
       // PM head 1 (latest doc that contains PM1)
       client.db(DATA_DBS.powerModule).collection(colPM)
-        .findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 } })
+        .findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 }, maxTimeMS: QUERY_MS })
         .catch(() => null),
 
       // PM head 2 (latest doc that contains PM2)
       client.db(DATA_DBS.powerModule).collection(colPM)
-        .findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 } })
+        .findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 }, maxTimeMS: QUERY_MS })
         .catch(() => null),
 
       // Router — latest 50
       client.db(DATA_DBS.router).collection(colRouter)
-        .find().sort({ _id: -1 }).limit(50).toArray()
+        .find().sort({ _id: -1 }).limit(50).maxTimeMS(QUERY_MS).toArray()
         .catch(() => []),
 
       // PLC — latest 1
       client.db(DATA_DBS.plc).collection(colPlc)
-        .findOne({}, { sort: { _id: -1 } })
+        .findOne({}, { sort: { _id: -1 }, maxTimeMS: QUERY_MS })
         .catch(() => null),
     ]);
 
@@ -212,10 +225,10 @@ export async function GET(
     // 8. Alerts (from Station DB)
     const alerts = await client.db(STATION_DB).collection('_alerts')
       .find({ stationId: id, acknowledged: false })
-      .sort({ timestamp: -1 }).limit(50).toArray()
+      .sort({ timestamp: -1 }).limit(50).maxTimeMS(QUERY_MS).toArray()
       .catch(() => []);
 
-    return NextResponse.json({
+    return {
       station: stationConfig,
       heartbeat: {
         online: hbOnline,
@@ -280,10 +293,39 @@ export async function GET(
         },
       ],
       alerts,
+    };
+  }
+  // No client.close() — connection pool is shared and reused across requests.
+}
+
+/**
+ * GET /api/dashboard/[id]
+ * Served from the shared response cache (lib/apiCache), keyed per station: many
+ * viewers of the same station share one rebuild, and a stale payload is returned
+ * immediately while the refresh runs behind it.
+ */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  try {
+    const { data, state, ageMs } = await cachedResponse<string>(
+      `dashboard:${id}`, DASH_TTL_MS, DASH_MAX_STALE_MS,
+      async () => JSON.stringify(await buildDashboard(id)),
+    );
+    return new NextResponse(data, {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Dash-Cache': `${state};age=${ageMs}ms`,
+      },
     });
   } catch (err: any) {
+    if (err instanceof StationNotFound) {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
     console.error('[api/dashboard] error:', err?.message || err);
     return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
   }
-  // No client.close() — connection pool is shared and reused across requests.
 }

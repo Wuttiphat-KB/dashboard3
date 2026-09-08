@@ -10,6 +10,7 @@ const STATION_DB = 'Station';
 // can invalidate it after a config change.
 const STATION_CACHE_MS = 60_000;
 const FINDONE_CONCURRENCY = 20;
+const CACHE_QUERY_MS = 20_000;
 
 async function loadStations(client: MongoClient): Promise<any[]> {
   const cache = getStationsCache();
@@ -22,16 +23,15 @@ async function loadStations(client: MongoClient): Promise<any[]> {
   cache.promise = (async () => {
     const db = client.db(STATION_DB);
 
-    // FAST PATH: read from _stations mirror populated by the backend
-    try {
-      const docs = await db.collection('_stations').find().toArray();
-      if (docs.length > 0) {
-        cache.data = docs;
-        cache.at = Date.now();
-        return docs;
-      }
-    } catch {
-      // fall through to slow scan
+    // FAST PATH: read from _stations mirror populated by the backend.
+    // A failed read deliberately propagates rather than falling through: the slow
+    // scan below fires 230 queries, which is the last thing an already-overloaded
+    // Mongo needs. Only an empty-but-successful read means the mirror is missing.
+    const docs = await db.collection('_stations').find().maxTimeMS(CACHE_QUERY_MS).toArray();
+    if (docs.length > 0) {
+      cache.data = docs;
+      cache.at = Date.now();
+      return docs;
     }
 
     // SLOW FALLBACK: scan per-station collections — pick canonical doc per id.
