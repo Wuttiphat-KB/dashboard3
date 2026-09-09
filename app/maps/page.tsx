@@ -28,12 +28,27 @@ const STATUS_LABEL: Record<Status, string> = {
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 const LEAFLET_JS  = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
 
-// Dark/light basemap tiles (CartoDB) so the map matches the dashboard theme.
+// Dark/light basemap tiles so the map matches the dashboard theme.
+//
+// CARTO's free basemap CDN now requires an API key: it still answers 200 with a
+// PNG, but the image has "API KEY REQUIRED" stamped across it — which is why the
+// map looked broken without any network error to point at. Esri's Canvas
+// basemaps serve anonymously and keep the same flat grey look.
+//
+// Note the {z}/{y}/{x} order — Esri puts row before column, unlike the usual
+// {z}/{x}/{y} of XYZ tile servers. There is also no {s} subdomain or {r} retina
+// variant, so those placeholders are gone.
 const TILES = {
-  dark:  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  dark:  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+  light: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
 };
-const TILE_ATTR = '&copy; OpenStreetMap &copy; CARTO';
+const TILE_ATTR = 'Tiles &copy; Esri';
+
+// Esri's Canvas basemaps only have imagery up to z16 — past that they return a
+// blank placeholder tile. maxNativeZoom makes Leaflet upscale the z16 tile
+// instead, so zooming right in on a station still shows a map.
+const TILE_MAX_ZOOM = 19;
+const TILE_MAX_NATIVE_ZOOM = 16;
 
 // Teardrop map pin (SVG) coloured by status. Returned as a Leaflet divIcon
 // anchored at the tip so it points exactly at the coordinate. `scale` shrinks
@@ -222,7 +237,11 @@ export default function StationMapPage() {
     const w = window as any;
     if (mapStatus !== 'ready' || !mapRef.current || !w.L) return;
     if (tileRef.current) tileRef.current.remove();
-    tileRef.current = w.L.tileLayer(TILES[theme], { attribution: TILE_ATTR, maxZoom: 19 }).addTo(mapRef.current);
+    tileRef.current = w.L.tileLayer(TILES[theme], {
+      attribution: TILE_ATTR,
+      maxZoom: TILE_MAX_ZOOM,
+      maxNativeZoom: TILE_MAX_NATIVE_ZOOM,
+    }).addTo(mapRef.current);
   }, [theme, mapStatus]);
 
   // (Re)draw markers when data changes.
