@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { getMongoClient } from '@/lib/mongoClient';
 import { getFleetCache } from '@/lib/fleetCache';
+import { NextRequest, NextResponse } from 'next/server';
+import { MongoClient } from 'mongodb';
+import { getMongoClient } from '@/lib/mongoClient';
+import { getFleetCache } from '@/lib/fleetCache';
 import { getRequestSession } from '@/lib/authorization';
 import { canViewStation } from '@/lib/stationAccess';
+import { cachedResponse } from '@/lib/apiCache';
+
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
@@ -14,6 +20,39 @@ const HB_TIMEOUT = 300_000; // 5 min
 // for 60s so subsequent requests skip that whole loop.
 const STATION_CACHE_MS = 60_000;
 const FINDONE_CONCURRENCY = 20;
+
+// ── Whole-response cache ────────────────────────────────────────────────────
+// Every open browser tab refetches this route on WebSocket traffic. Without a
+// shared cache, N tabs meant N independent rebuilds running at once (~50 Mongo
+// queries each). Mongo saturated, requests slowed, more piled up behind them —
+// the spiral that ended with /api/fleet taking 20+ minutes and the UI showing
+// "0 stations". One rebuild per TTL window now serves every caller.
+const FLEET_TTL_MS       = 10_000;   // within this window: no Mongo work at all
+const FLEET_MAX_STALE_MS = 180_000;  // beyond it: serve stale, refresh behind it
+
+// ── PowerModule fallback memo ───────────────────────────────────────────────
+// findOne({'payload.PMn': {$exists:true}}, {sort:{_id:-1}}) on a station that has
+// never published that head scans the entire collection and finds nothing — and
+// the old code re-ran it on every request, for every such station. Remember the
+// outcome instead: hits stay valid briefly, misses are suppressed for minutes,
+// so a permanently-empty (offline) station costs one scan, not thousands.
+const PM_FALLBACK_HIT_TTL_MS  = 30_000;
+const PM_FALLBACK_MISS_TTL_MS = 600_000;
+/** Per-query ceiling — a scan that can't finish quickly isn't worth waiting for. */
+const PM_FALLBACK_QUERY_MS    = 2_000;
+/** Ceiling for the whole fallback phase, so it can never dominate a rebuild. */
+const PM_FALLBACK_BUDGET_MS   = 8_000;
+
+/**
+ * Ceiling for the `_*` cache reads. These are one-row-per-station collections
+ * (~215 docs); anything near this means Mongo is in trouble, and waiting longer
+ * only deepens the queue that made it slow.
+ */
+const CACHE_QUERY_MS = 20_000;
+
+interface PmFallbackEntry { head: any | null; at: number; }
+const pmFallbackCache: Map<string, PmFallbackEntry> =
+  ((globalThis as any).__pmFallbackCache ??= new Map<string, PmFallbackEntry>());
 
 async function loadStations(client: MongoClient): Promise<any[]> {
   const cache = getFleetCache();
@@ -28,15 +67,16 @@ async function loadStations(client: MongoClient): Promise<any[]> {
 
     // FAST PATH: backend mirrors all station configs to `_stations` every reload.
     // Read from there — one query instead of 230 findOne()s.
-    try {
-      const docs = await stDb.collection('_stations').find().toArray();
-      if (docs.length > 0) {
-        cache.data = docs;
-        cache.at = Date.now();
-        return docs;
-      }
-    } catch {
-      // fall through to slow scan
+    //
+    // A FAILED read must NOT fall through to the slow scan: the scan fires 230
+    // queries, so treating "Mongo is overloaded" as "the mirror is missing" adds
+    // 230 more queries to the pile that caused the failure. Only an empty (but
+    // successful) read means the mirror genuinely isn't populated yet.
+    const docs = await stDb.collection('_stations').find().maxTimeMS(CACHE_QUERY_MS).toArray();
+    if (docs.length > 0) {
+      cache.data = docs;
+      cache.at = Date.now();
+      return docs;
     }
 
     // SLOW FALLBACK: scan per-station collections. Only used until backend has
@@ -81,16 +121,23 @@ async function loadStations(client: MongoClient): Promise<any[]> {
 }
 
 /**
- * GET /api/fleet
- * Returns stations + summary dashboard data for every station in one call.
+ * Build the fleet payload: stations + summary dashboard data for every station.
  *
  * All data comes from `Station` DB's `_*` cache collections (populated by the
  * backend) — no queries against the per-station data DBs. This makes the call
- * O(7 queries) instead of O(800).
+ * O(7 queries) instead of O(800). Called only through the response cache in
+ * GET below, so at most one of these runs at a time.
  */
+async function buildFleet(): Promise<any[]> {
+  const t0 = Date.now();
+  const phase: Record<string, number> = {};
+  const mark = (name: string, since: number) => { phase[name] = Date.now() - since; };
+}
+
 export async function GET(req: NextRequest) {
   const session = await getRequestSession(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
   const t0 = Date.now();
   const phase: Record<string, number> = {};
   const mark = (name: string, since: number) => { phase[name] = Date.now() - since; };
@@ -123,13 +170,19 @@ export async function GET(req: NextRequest) {
       meterLatestDocs,
       pmDataDocs,
     ] = await Promise.all([
-      stDb.collection('_device_status').find().toArray().catch(() => []),
-      stDb.collection('_router_data').find().toArray().catch(() => []),
-      stDb.collection('_script_status').find().toArray().catch(() => []),
-      stDb.collection('_plc_data').find().toArray().catch(() => []),
-      stDb.collection('_fan_data').find().toArray().catch(() => []),
-      stDb.collection('_meter_latest').find().toArray().catch(() => []),
-      stDb.collection('_pm_data').find().toArray().catch(() => []),
+      // NOT caught: _device_status is what every station's online/offline state is
+      // derived from. Swallowing a failure here renders all ~215 stations
+      // "offline" — a Mongo problem becomes indistinguishable from a total fleet
+      // outage on an ops dashboard. Let it throw so the route reports an error
+      // and keeps serving the last good payload instead of lying.
+      stDb.collection('_device_status').find().maxTimeMS(CACHE_QUERY_MS).toArray(),
+      // The rest only blank out their own panel when missing, so degrade quietly.
+      stDb.collection('_router_data').find().maxTimeMS(CACHE_QUERY_MS).toArray().catch(() => []),
+      stDb.collection('_script_status').find().maxTimeMS(CACHE_QUERY_MS).toArray().catch(() => []),
+      stDb.collection('_plc_data').find().maxTimeMS(CACHE_QUERY_MS).toArray().catch(() => []),
+      stDb.collection('_fan_data').find().maxTimeMS(CACHE_QUERY_MS).toArray().catch(() => []),
+      stDb.collection('_meter_latest').find().maxTimeMS(CACHE_QUERY_MS).toArray().catch(() => []),
+      stDb.collection('_pm_data').find().maxTimeMS(CACHE_QUERY_MS).toArray().catch(() => []),
     ]);
     mark('loadCaches', tCaches);
 
@@ -349,28 +402,54 @@ export async function GET(req: NextRequest) {
     if (pmFallbackTargets.length > 0) {
       const pmDb = client.db('PowerModule');
       const FALLBACK_CONCURRENCY = 25;
+      const deadline = Date.now() + PM_FALLBACK_BUDGET_MS;
+      const resultById = new Map(results.map(r => [r.station.id, r]));
+
+      /** Latest PM doc for one head — memoised, including "this head has none". */
+      const loadHead = async (col: string, stationId: string, h: 1 | 2) => {
+        const key = `${stationId}#${h}`;
+        const memo = pmFallbackCache.get(key);
+        if (memo) {
+          const ttl = memo.head ? PM_FALLBACK_HIT_TTL_MS : PM_FALLBACK_MISS_TTL_MS;
+          if (Date.now() - memo.at < ttl) return memo.head;
+        }
+        // Out of budget: reuse whatever we already had rather than starting a
+        // scan that would push this rebuild past its deadline.
+        if (Date.now() > deadline) return memo?.head ?? null;
+
+        const doc = await pmDb.collection(col)
+          .findOne(
+            { [`payload.PM${h}`]: { $exists: true } } as any,
+            { sort: { _id: -1 }, maxTimeMS: PM_FALLBACK_QUERY_MS },
+          )
+          .catch(() => null);
+
+        const p: any = (doc as any)?.payload;
+        const head = p ? {
+          head: h,
+          pmCount:   Number(p[`PM${h}`]) || 0,
+          voltage:   Number(p[`Voltage${h}`]) || 0,
+          current:   Number(p[`Current${h}`]) || 0,
+          powerKw:   (Number(p[`Power${h}`]) || 0) / 1000,
+          timestamp: p[`timestamp${h}`] || p.timestamp || '',
+          online:    true,
+        } : null;
+        pmFallbackCache.set(key, { head, at: Date.now() });
+        return head;
+      };
+
       for (let i = 0; i < pmFallbackTargets.length; i += FALLBACK_CONCURRENCY) {
         const batch = pmFallbackTargets.slice(i, i + FALLBACK_CONCURRENCY);
         await Promise.all(batch.map(async ({ stationId, col, needH1, needH2 }) => {
-          const [pm1, pm2] = await Promise.all([
-            needH1 ? pmDb.collection(col).findOne({ 'payload.PM1': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null) : null,
-            needH2 ? pmDb.collection(col).findOne({ 'payload.PM2': { $exists: true } }, { sort: { _id: -1 } }).catch(() => null) : null,
+          const [head1, head2] = await Promise.all([
+            needH1 ? loadHead(col, stationId, 1) : null,
+            needH2 ? loadHead(col, stationId, 2) : null,
           ]);
-          const r = results.find(x => x.station.id === stationId);
+          const r = resultById.get(stationId);
           if (!r) return;
-          for (const [h, doc] of [[1, pm1], [2, pm2]] as const) {
-            if (!doc) continue;
-            const p: any = (doc as any).payload || {};
-            const head = {
-              head: h,
-              pmCount:    Number(p[`PM${h}`]) || 0,
-              voltage:    Number(p[`Voltage${h}`]) || 0,
-              current:    Number(p[`Current${h}`]) || 0,
-              powerKw:    (Number(p[`Power${h}`]) || 0) / 1000,
-              timestamp:  p[`timestamp${h}`] || p.timestamp || '',
-              online:     true,
-            };
-            const idx = r.powerModule.findIndex((x: any) => x.head === h);
+          for (const head of [head1, head2]) {
+            if (!head) continue;
+            const idx = r.powerModule.findIndex((x: any) => x.head === head.head);
             if (idx >= 0) r.powerModule[idx] = head;
             else r.powerModule.push(head);
           }
@@ -381,13 +460,45 @@ export async function GET(req: NextRequest) {
 
     const total = Date.now() - t0;
     const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
+    const results = await cachedResponse('fleet', () => buildFleet(), { ttlMs: 30_000 });
     console.log(`[api/fleet] ${summary} total=${total}ms stations=${results.length}`);
     return NextResponse.json(results, { headers: { 'Cache-Control': 'private, no-store' } });
+
   } catch (err: any) {
     const total = Date.now() - t0;
     const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
-    console.error(`[api/fleet] FAILED after ${total}ms ${summary} error:`, err?.message || err);
-    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
+    console.error(`[api/fleet] rebuild FAILED after ${total}ms ${summary} error:`, err?.message || err);
+    throw err;
   }
   // No client.close() — connection pool is shared and reused across requests.
+}
+
+/**
+ * GET /api/fleet
+ * Served from the shared response cache: one rebuild per FLEET_TTL_MS no matter
+ * how many tabs are connected, and a stale payload is returned immediately while
+ * the refresh runs behind it — so a slow Mongo delays freshness, never the page
+ * itself. X-Fleet-Cache reports which path served the request.
+ */
+export async function GET() {
+  try {
+    // The cached value is the serialised body, not the object: this payload is
+    // ~400 KB and every connected tab asks for it, so stringifying once per
+    // rebuild instead of once per request keeps the Node process idle between
+    // rebuilds rather than burning CPU on JSON.
+    const { data, state, ageMs } = await cachedResponse<string>(
+      'fleet', FLEET_TTL_MS, FLEET_MAX_STALE_MS,
+      async () => JSON.stringify(await buildFleet()),
+    );
+    return new NextResponse(data, {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Fleet-Cache': `${state};age=${ageMs}ms`,
+      },
+    });
+  } catch (err: any) {
+    console.error('[api/fleet] error:', err?.message || err);
+    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });
+  }
 }

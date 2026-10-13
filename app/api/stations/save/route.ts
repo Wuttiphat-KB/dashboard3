@@ -3,8 +3,13 @@ import { cookies } from 'next/headers';
 import { getMongoClient } from '@/lib/mongoClient';
 import { invalidateFleetCache } from '@/lib/fleetCache';
 import { invalidateStationsCache } from '@/lib/stationsCache';
+import { getMongoClient } from '@/lib/mongoClient';
+import { invalidateFleetCache } from '@/lib/fleetCache';
+import { invalidateStationsCache } from '@/lib/stationsCache';
+import { invalidateResponse } from '@/lib/apiCache';
 import { validateCustomerInfo } from '@/lib/customerInfo';
 import { requireEditor } from '@/lib/authorization';
+
 
 const STATION_DB = 'Station';
 const COOKIE_NAME = 'cfg_pin';
@@ -135,6 +140,9 @@ export async function POST(req: NextRequest) {
 
     invalidateFleetCache();
     invalidateStationsCache();
+    // Also drop the built /api/fleet payload — clearing only the station
+    // list would leave the cached response serving the pre-edit config.
+    invalidateResponse('fleet');
 
     return NextResponse.json({
       ok: true,
