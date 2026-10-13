@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
     const stationId = url.searchParams.get('stationId');
     const start = url.searchParams.get('start');
     const end   = url.searchParams.get('end');
+    const format = url.searchParams.get('format') === 'csv' ? 'csv' : 'xlsx';
 
     if (!stationId) return NextResponse.json({ error: 'stationId is required' }, { status: 400 });
     if (!start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
@@ -97,6 +98,19 @@ export async function GET(req: NextRequest) {
         const kw = deltaWh / 1000;
         rows.push([ts, head, Number(kw.toFixed(3)), Number((kw * RATE).toFixed(3))]);
       }
+    }
+
+    if (format === 'csv') {
+      const lines = ['timestamp,connector,kW,Price'];
+      for (const r of rows) lines.push(`${r[0]},${r[1]},${Number(r[2]).toFixed(3)},${Number(r[3]).toFixed(3)}`);
+      const csvName = `energy_${stationId}_${start}_${end}.csv`.replace(/[^\w.\-]/g, '_');
+      return new NextResponse('\uFEFF' + lines.join('\r\n') + '\r\n', {
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${csvName}"`,
+          'Cache-Control': 'private, no-store',
+        },
+      });
     }
 
     const xlsx = buildXlsx('Energy', [

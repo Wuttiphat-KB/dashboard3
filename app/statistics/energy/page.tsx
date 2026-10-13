@@ -66,11 +66,11 @@ export default function ChargingReportPage() {
     setEndDate(r.end);
   };
 
-  const exportXlsx = async () => {
+  const exportFile = async (format: 'xlsx' | 'csv') => {
     if (!stationId || !rangeValid) return;
     setExporting(true);
     try {
-      const r = await fetch(`/api/energy/export?stationId=${encodeURIComponent(stationId)}&start=${range.start}&end=${range.end}`);
+      const r = await fetch(`/api/energy/export?stationId=${encodeURIComponent(stationId)}&start=${range.start}&end=${range.end}&format=${format}`);
       if (!r.ok) {
         const j = await r.json().catch(() => null);
         throw new Error(j?.error || `API ${r.status}`);
@@ -78,7 +78,7 @@ export default function ChargingReportPage() {
       const blob = await r.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `energy_${stationId}_${range.start}_${range.end}.xlsx`;
+      a.download = `energy_${stationId}_${range.start}_${range.end}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -205,15 +205,18 @@ export default function ChargingReportPage() {
             </div>
           ))}
 
-          {/* Export Excel */}
-          <button
-            className="btn btn-primary"
-            onClick={exportXlsx}
-            disabled={!stationId || !rangeValid || exporting}
-            style={{ padding: '5px 12px', fontSize: 11, opacity: (!stationId || !rangeValid || exporting) ? 0.5 : 1 }}
-          >
-            {exporting ? 'Exporting...' : '⬇ Export Excel'}
-          </button>
+          {/* Export Excel / CSV */}
+          {(['xlsx', 'csv'] as const).map(fmt => (
+            <button
+              key={fmt}
+              className={fmt === 'xlsx' ? 'btn btn-primary' : 'btn btn-secondary'}
+              onClick={() => exportFile(fmt)}
+              disabled={!stationId || !rangeValid || exporting}
+              style={{ padding: '5px 12px', fontSize: 11, opacity: (!stationId || !rangeValid || exporting) ? 0.5 : 1 }}
+            >
+              {exporting ? 'Exporting...' : fmt === 'xlsx' ? '⬇ Export Excel' : '⬇ Export CSV'}
+            </button>
+          ))}
 
           <div style={{ flex: 1, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' }}>
             {selectedStation && (
