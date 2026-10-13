@@ -2,14 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { getMongoClient } from '@/lib/mongoClient';
 import { getFleetCache } from '@/lib/fleetCache';
-import { NextRequest, NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
-import { getMongoClient } from '@/lib/mongoClient';
-import { getFleetCache } from '@/lib/fleetCache';
-import { getRequestSession } from '@/lib/authorization';
-import { canViewStation } from '@/lib/stationAccess';
+import { getRequestSession, visibleStationIds } from '@/lib/authorization';
 import { cachedResponse } from '@/lib/apiCache';
-
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
@@ -132,15 +126,6 @@ async function buildFleet(): Promise<any[]> {
   const t0 = Date.now();
   const phase: Record<string, number> = {};
   const mark = (name: string, since: number) => { phase[name] = Date.now() - since; };
-}
-
-export async function GET(req: NextRequest) {
-  const session = await getRequestSession(req);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const t0 = Date.now();
-  const phase: Record<string, number> = {};
-  const mark = (name: string, since: number) => { phase[name] = Date.now() - since; };
 
   try {
     const tConn = Date.now();
@@ -151,7 +136,7 @@ export async function GET(req: NextRequest) {
     const tCfg = Date.now();
     const _fleetCache = getFleetCache();
     const fromCache = !!_fleetCache.data && Date.now() - _fleetCache.at < STATION_CACHE_MS;
-    const stations = (await loadStations(client)).filter(station => canViewStation(session, station));
+    const stations = await loadStations(client);
     mark(fromCache ? `stationsCached[${stations.length}]` : `stationsLoaded[${stations.length}]`, tCfg);
 
     // 2. Load live caches in parallel — all stations in one query each.
@@ -460,10 +445,8 @@ export async function GET(req: NextRequest) {
 
     const total = Date.now() - t0;
     const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
-    const results = await cachedResponse('fleet', () => buildFleet(), { ttlMs: 30_000 });
-    console.log(`[api/fleet] ${summary} total=${total}ms stations=${results.length}`);
-    return NextResponse.json(results, { headers: { 'Cache-Control': 'private, no-store' } });
-
+    console.log(`[api/fleet] rebuild ${summary} total=${total}ms stations=${results.length}`);
+    return results;
   } catch (err: any) {
     const total = Date.now() - t0;
     const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
@@ -480,7 +463,9 @@ export async function GET(req: NextRequest) {
  * the refresh runs behind it — so a slow Mongo delays freshness, never the page
  * itself. X-Fleet-Cache reports which path served the request.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const session = await getRequestSession(req);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     // The cached value is the serialised body, not the object: this payload is
     // ~400 KB and every connected tab asks for it, so stringifying once per
@@ -490,10 +475,15 @@ export async function GET() {
       'fleet', FLEET_TTL_MS, FLEET_MAX_STALE_MS,
       async () => JSON.stringify(await buildFleet()),
     );
-    return new NextResponse(data, {
+    // The cache holds the unrestricted fleet; scoped accounts get a filtered copy.
+    const allowedIds = await visibleStationIds(session, await getMongoClient());
+    const body = allowedIds === null
+      ? data
+      : JSON.stringify((JSON.parse(data) as any[]).filter(r => allowedIds.includes(r?.station?.id)));
+    return new NextResponse(body, {
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'private, no-store',
         'X-Fleet-Cache': `${state};age=${ageMs}ms`,
       },
     });
