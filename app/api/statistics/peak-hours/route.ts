@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
+import { getRequestSession, visibleStationIds } from '@/lib/authorization';
 
 const STATION_DB     = 'Station';
 const AGG_COLLECTION = '_peak_hourly';
@@ -19,6 +20,8 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
  * Plus summary totals: peak hour, peak day, total kWh, station count.
  */
 export async function GET(req: NextRequest) {
+  const session = await getRequestSession(req);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const url  = new URL(req.url);
     const from = url.searchParams.get('from');
@@ -32,8 +35,9 @@ export async function GET(req: NextRequest) {
     }
 
     const client = await getMongoClient();
+    const allowedIds = await visibleStationIds(session, client);
     const docs = await client.db(STATION_DB).collection(AGG_COLLECTION)
-      .find({ date: { $gte: from, $lte: to } })
+      .find({ date: { $gte: from, $lte: to }, ...(allowedIds === null ? {} : { stationId: { $in: allowedIds } }) })
       .toArray();
 
     // ── Roll-ups ───────────────────────────────────────────────────────────
@@ -113,7 +117,7 @@ export async function GET(req: NextRequest) {
         peakDayValue:  Number(peakDayValue.toFixed(2)),
         stationCount:  stationSet.size,
       },
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err: any) {
     console.error('[api/peak-hours] error:', err?.message || err);
     return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });

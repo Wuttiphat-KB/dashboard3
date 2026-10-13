@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSessionAccess } from '@/components/SessionProvider';
 
 interface ThresholdConfig {
   tempAlert: number;
@@ -15,6 +16,7 @@ interface TelegramGlobal {
 }
 
 export default function SettingsPage() {
+  const { canEdit, loading } = useSessionAccess();
   const [thresholds, setThresholds] = useState<ThresholdConfig>({
     tempAlert:        75,
     heartbeatTimeout: 5,
@@ -33,6 +35,8 @@ export default function SettingsPage() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
+
+  if (loading || !canEdit) return <div className="card">{loading ? 'Checking access...' : 'This account has read-only access'}</div>;
 
   return (
     <div>

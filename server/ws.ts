@@ -1,13 +1,49 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { ENV } from './config';
+import { SESSION_COOKIE, verifyToken, type VerifiedSession } from '../lib/auth';
+import { canViewStation, type CustomerStation } from '../lib/stationAccess';
+import { getStationDb } from './mongo';
+import type { IncomingMessage } from 'http';
 
 let wss: WebSocketServer | null = null;
+const handshakes = new WeakMap<IncomingMessage, VerifiedSession>();
+const sessions = new WeakMap<WebSocket, VerifiedSession>();
+const stationChecks = new Map<string, Promise<boolean>>();
+let stationLookup = (stationId: string): Promise<CustomerStation | null> =>
+  getStationDb().collection<CustomerStation & { id: string }>('_stations').findOne({ id: stationId }, { projection: { customer: 1 } });
 
-export function startWs(): WebSocketServer {
-  wss = new WebSocketServer({ port: ENV.WS_PORT });
+/** Coalesce concurrent visibility checks for the same station; never send on errors. */
+function isPtStation(stationId: string): Promise<boolean> {
+  const pending = stationChecks.get(stationId);
+  if (pending) return pending;
+  const check = Promise.resolve().then(async () => {
+    const station = await stationLookup(stationId);
+    return !!station && canViewStation({ username: 'PTG', role: 'viewer', expiresAt: Infinity }, station);
+  }).catch(() => false).finally(() => stationChecks.delete(stationId));
+  stationChecks.set(stationId, check);
+  return check;
+}
+
+export function startWs(options: { port?: number; stationLookup?: typeof stationLookup } = {}): WebSocketServer {
+  if (options.stationLookup) stationLookup = options.stationLookup;
+  wss = new WebSocketServer({
+    port: options.port ?? ENV.WS_PORT,
+    verifyClient: (info, done) => {
+      const token = info.req.headers.cookie?.split(';').map(part => part.trim())
+        .find(part => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
+      verifyToken(token).then(session => {
+        if (!session) { done(false, 401, 'Unauthorized'); return; }
+        handshakes.set(info.req, session);
+        done(true);
+      }).catch(() => done(false, 401, 'Unauthorized'));
+    },
+  });
   console.log(`[ws] listening on port ${ENV.WS_PORT}`);
 
-  wss.on('connection', (socket) => {
+  wss.on('connection', (socket, req) => {
+    const session = handshakes.get(req);
+    if (!session) { socket.close(1008, 'Unauthorized'); return; }
+    sessions.set(socket, session);
     console.log(`[ws] client connected (total: ${wss!.clients.size})`);
     socket.on('close', () => {
       console.log(`[ws] client disconnected (total: ${wss!.clients.size})`);
@@ -22,15 +58,26 @@ export function broadcast(type: string, stationId: string, data: unknown): void 
   if (!wss) return;
   const msg = JSON.stringify({ type, stationId, data, ts: Date.now() });
   for (const client of wss.clients) {
-    if (client.readyState === WebSocket.OPEN) {
+    const session = sessions.get(client);
+    if (!session) continue;
+    if (Date.now() >= session.expiresAt) { client.close(1008, 'Session expired'); continue; }
+    if (session.role === 'admin' && client.readyState === WebSocket.OPEN) {
       client.send(msg);
+    } else if (session.username === 'PTG') {
+      void isPtStation(stationId).then(allowed => {
+        if (allowed && Date.now() < session.expiresAt && client.readyState === WebSocket.OPEN) {
+          client.send(msg);
+        }
+      });
     }
   }
 }
 
 /** Send full snapshot to a single client */
 export function sendTo(socket: WebSocket, payload: unknown): void {
-  if (socket.readyState === WebSocket.OPEN) {
+  const session = sessions.get(socket);
+  // Unscoped snapshots must not bypass station authorization.
+  if (session?.role === 'admin' && Date.now() < session.expiresAt && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(payload));
   }
 }

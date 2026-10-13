@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { validateCredentials, signToken, SESSION_COOKIE, nextDailyExpiry } from '@/lib/auth';
+import { validateCredentials, signToken, SESSION_COOKIE, nextDailyExpiry, getAccountRole } from '@/lib/auth';
 
 /**
  * POST /api/auth/login
@@ -27,8 +26,9 @@ export async function POST(req: NextRequest) {
     // the signed token and the cookie lifetime so they expire together.
     const expiresAt = nextDailyExpiry();
     const token = await signToken(username, expiresAt);
-    const jar = await cookies();
-    jar.set({
+    const res = NextResponse.json({ ok: true, username, role: getAccountRole(username) });
+    res.cookies.set({ name: 'cfg_pin', value: '', path: '/', maxAge: 0, httpOnly: true, sameSite: 'lax' });
+    res.cookies.set({
       name: SESSION_COOKIE,
       value: token,
       httpOnly: true,
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       maxAge: Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)),
     });
 
-    return NextResponse.json({ ok: true, username });
+    return res;
   } catch (err: any) {
     console.error('[api/auth/login] error:', err?.message || err);
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });

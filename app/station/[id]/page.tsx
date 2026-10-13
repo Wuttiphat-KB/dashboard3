@@ -12,6 +12,7 @@ import FanRPMPanel      from '@/components/FanRPMPanel';
 import MqttScriptPanel  from '@/components/MqttScriptPanel';
 import PlcPanel         from '@/components/PlcPanel';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
+import { useSessionAccess } from '@/components/SessionProvider';
 const TABS = [
   { id: 'heartbeat',   label: '♡  Heartbeat'     },
   { id: 'powermodule', label: '⚡ Power Module'   },
@@ -23,6 +24,7 @@ const TABS = [
 ];
 
 export default function StationPage({ params }: { params: Promise<{ id: string }> }) {
+  const { canEdit } = useSessionAccess();
   const { id }      = use(params);
   const [tab, setTab] = useState('heartbeat');
 
@@ -49,7 +51,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
       <div>
         <Link href="/" style={{ fontSize: 12, color: 'var(--info-text)', textDecoration: 'none' }}>← Overview</Link>
         <div className="card" style={{ marginTop: '1rem', textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Station &quot;{id}&quot; not found. <Link href="/config" style={{ color: 'var(--info-text)' }}>Add in Config</Link>
+          Station &quot;{id}&quot; not found. {canEdit && <Link href="/config" style={{ color: 'var(--info-text)' }}>Add in Config</Link>}
         </div>
       </div>
     );
@@ -102,14 +104,14 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
                 }}>
                   {station.zerotierIp}
                 </span>
-              ) : (
+              ) : canEdit ? (
                 <Link href={`/config?edit=${station.id}`} style={{ fontSize: 11, color: 'var(--text-muted)', textDecoration: 'none' }}>
                   not set — add in Config
                 </Link>
-              )}
+              ) : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>not set</span>}
             </div>
           </div>
-          <Link href={`/config?edit=${station.id}`} className="btn btn-secondary btn-sm">◧ Config</Link>
+          {canEdit && <Link href={`/config?edit=${station.id}`} className="btn btn-secondary btn-sm">◧ Config</Link>}
         </div>
 
         {/* Quick stats */}

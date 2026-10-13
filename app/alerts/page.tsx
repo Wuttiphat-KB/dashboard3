@@ -6,6 +6,7 @@ import { useStations } from '@/lib/hooks/useStations';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
 import { Alert } from '@/lib/types';
 import { fmtTs, timeSince } from '@/lib/formatTime';
+import { useSessionAccess } from '@/components/SessionProvider';
 
 const TYPE_LABELS: Record<Alert['type'], string> = {
   heartbeat:   'HB',
@@ -30,6 +31,7 @@ interface ApiAlert {
 }
 
 export default function AlertsPage() {
+  const { canEdit } = useSessionAccess();
   const [alerts, setAlerts]     = useState<ApiAlert[]>([]);
   const [loading, setLoading]   = useState(true);
   const [filter, setFilter]     = useState<'all' | 'unack' | 'critical' | 'warning'>('unack');
@@ -115,7 +117,7 @@ export default function AlertsPage() {
             {error && <span style={{ color: 'var(--error-text)' }}> · API error: {error}</span>}
           </p>
         </div>
-        {unackCount > 0 && (
+        {canEdit && unackCount > 0 && (
           <button className="btn btn-secondary btn-sm" onClick={ackAll}>
             ✓ Acknowledge All
           </button>
@@ -199,11 +201,11 @@ export default function AlertsPage() {
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
                 {alert.acknowledged ? (
                   <span className="badge badge-offline">Acknowledged</span>
-                ) : (
+                ) : canEdit ? (
                   <button className="btn btn-secondary btn-sm" onClick={() => ack(alert.id)}>
                     ✓ Ack
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
           </div>

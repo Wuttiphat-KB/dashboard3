@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { getWsUrl } from '@/lib/config';
+import { useSessionAccess } from '@/components/SessionProvider';
 
 export interface WsMessage {
   type: string;       // 'heartbeat' | 'meter' | 'powerModule' | 'fanRpm' | 'temperature' | 'plc' | 'alert' | 'scriptHb'
@@ -13,6 +14,7 @@ export interface WsMessage {
 type MessageHandler = (msg: WsMessage) => void;
 
 export function useWebSocket(onMessage?: MessageHandler) {
+  const { username } = useSessionAccess();
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
@@ -24,6 +26,7 @@ export function useWebSocket(onMessage?: MessageHandler) {
   }, [onMessage]);
 
   useEffect(() => {
+    if (!username) return;
     const wsUrl = getWsUrl();
     if (!wsUrl) return;
 
@@ -70,7 +73,7 @@ export function useWebSocket(onMessage?: MessageHandler) {
       clearTimeout(reconnectTimer);
       ws?.close();
     };
-  }, []);
+  }, [username]);
 
   return { connected, ws: wsRef };
 }

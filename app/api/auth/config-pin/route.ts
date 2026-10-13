@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { requireEditor } from '@/lib/authorization';
 
 const COOKIE_NAME = 'cfg_pin';
 const COOKIE_MAX_AGE = 8 * 3600;  // 8 hours
@@ -9,7 +10,9 @@ function getPin(): string {
 }
 
 /** GET — check if current cookie is valid */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
   const pin = getPin();
   if (!pin) return NextResponse.json({ ok: true, unprotected: true });
 
@@ -20,6 +23,8 @@ export async function GET() {
 
 /** POST — submit PIN, set cookie if correct */
 export async function POST(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
   const expected = getPin();
   if (!expected) return NextResponse.json({ ok: true, unprotected: true });
 

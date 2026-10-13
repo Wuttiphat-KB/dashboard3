@@ -14,6 +14,16 @@
  */
 
 export const SESSION_COOKIE = 'auth_session';
+export type AccountRole = 'admin' | 'viewer';
+
+// PTG viewer account is disabled for now. Set to true to re-enable login
+// (customer scoping in stationAccess.ts / server/ws.ts is left in place).
+const PTG_ENABLED = false;
+
+export function getAccountRole(username: string): AccountRole | null {
+  if (username === 'PTG') return PTG_ENABLED ? 'viewer' : null;
+  return username === getExpectedCredentials().username ? 'admin' : null;
+}
 export const TOKEN_TTL_MS   = 7 * 86_400_000;  // 7 days (legacy fallback — sessions now expire daily, see nextDailyExpiry)
 
 // Sessions expire every day at 07:00 Thailand time (ICT = UTC+7, no DST), so
@@ -54,7 +64,8 @@ export function getExpectedCredentials(): { username: string; password: string }
 }
 
 export function validateCredentials(user: string, pass: string): boolean {
-  const exp = getExpectedCredentials();
+  if (user === 'PTG' && !PTG_ENABLED) return false;
+  const exp = user === 'PTG' ? { username: 'PTG', password: '1234' } : getExpectedCredentials();
   // Constant-time-ish: compare length first, then chars.
   if (user.length !== exp.username.length || pass.length !== exp.password.length) return false;
   let diff = 0;
@@ -116,6 +127,7 @@ export async function signToken(username: string, expiresAt = nextDailyExpiry())
 export interface VerifiedSession {
   username:  string;
   expiresAt: number;
+  role: AccountRole;
 }
 
 export async function verifyToken(token: string | undefined | null): Promise<VerifiedSession | null> {
@@ -131,7 +143,7 @@ export async function verifyToken(token: string | undefined | null): Promise<Ver
     const sig          = decoded.slice(lastColon + 1);
     const expiresAt    = Number(expiresAtStr);
     if (!username || isNaN(expiresAt)) return null;
-    if (Date.now() > expiresAt) return null;
+    if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) return null;
     const expected = await hmacHex(`${username}:${expiresAt}`, getSecret());
     // Constant-time compare
     if (sig.length !== expected.length) return null;
@@ -140,7 +152,9 @@ export async function verifyToken(token: string | undefined | null): Promise<Ver
       diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
     }
     if (diff !== 0) return null;
-    return { username, expiresAt };
+    const role = getAccountRole(username);
+    if (!role) return null;
+    return { username, expiresAt, role };
   } catch {
     return null;
   }

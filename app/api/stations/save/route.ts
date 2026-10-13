@@ -3,7 +3,13 @@ import { cookies } from 'next/headers';
 import { getMongoClient } from '@/lib/mongoClient';
 import { invalidateFleetCache } from '@/lib/fleetCache';
 import { invalidateStationsCache } from '@/lib/stationsCache';
+import { getMongoClient } from '@/lib/mongoClient';
+import { invalidateFleetCache } from '@/lib/fleetCache';
+import { invalidateStationsCache } from '@/lib/stationsCache';
 import { invalidateResponse } from '@/lib/apiCache';
+import { validateCustomerInfo } from '@/lib/customerInfo';
+import { requireEditor } from '@/lib/authorization';
+
 
 const STATION_DB = 'Station';
 const COOKIE_NAME = 'cfg_pin';
@@ -38,6 +44,8 @@ function deepTrim<T>(v: T): T {
  *   - name already used by a different station (collision)
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
   try {
     // Auth gate
     const expectedPin = process.env.CONFIG_PIN || '';
@@ -50,6 +58,11 @@ export async function POST(req: NextRequest) {
 
     const raw = await req.json();
     const station = deepTrim(raw);
+
+    const customerError = validateCustomerInfo(station.customer);
+    if (customerError) {
+      return NextResponse.json({ error: customerError }, { status: 400 });
+    }
 
     // ── Validate name ──
     const name: string = station.name || '';

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
+import { getRequestSession, visibleStationIds } from '@/lib/authorization';
 
 const STATION_DB = 'Station';
 const AGG_COLLECTION = '_charge_daily';
@@ -12,6 +13,8 @@ const AGG_COLLECTION = '_charge_daily';
  * yesterday every 15 min; older days are read-only.
  */
 export async function GET(req: NextRequest) {
+  const session = await getRequestSession(req);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const url = new URL(req.url);
     const stationId = url.searchParams.get('stationId');
@@ -26,6 +29,10 @@ export async function GET(req: NextRequest) {
     }
 
     const client = await getMongoClient();
+    const allowedIds = await visibleStationIds(session, client);
+    if (allowedIds !== null && !allowedIds.includes(stationId)) {
+      return NextResponse.json({ error: 'Station not found' }, { status: 404 });
+    }
     const docs = await client.db(STATION_DB).collection(AGG_COLLECTION)
       .find({
         stationId,
@@ -59,7 +66,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(out);
+    return NextResponse.json(out, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err: any) {
     console.error('[api/charging] error:', err?.message || err);
     return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });

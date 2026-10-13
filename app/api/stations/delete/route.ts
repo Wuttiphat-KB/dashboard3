@@ -3,7 +3,12 @@ import { cookies } from 'next/headers';
 import { getMongoClient } from '@/lib/mongoClient';
 import { invalidateFleetCache } from '@/lib/fleetCache';
 import { invalidateStationsCache } from '@/lib/stationsCache';
+import { getMongoClient } from '@/lib/mongoClient';
+import { invalidateFleetCache } from '@/lib/fleetCache';
+import { invalidateStationsCache } from '@/lib/stationsCache';
 import { invalidateResponse } from '@/lib/apiCache';
+import { requireEditor } from '@/lib/authorization';
+
 
 const STATION_DB = 'Station';
 const COOKIE_NAME = 'cfg_pin';
@@ -20,6 +25,8 @@ const COOKIE_NAME = 'cfg_pin';
  * (meter, PowerModule, Router…) so historical data stays available.
  */
 export async function POST(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
   try {
     // Auth check — same PIN gate as /save
     const expectedPin = process.env.CONFIG_PIN || '';

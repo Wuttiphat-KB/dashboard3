@@ -42,11 +42,16 @@ export type HmiBrand = 'Phoenix' | 'DWIN';
 // caches so all existing dashboards keep working.
 export type ControllerType = 'phoenix' | 'vector';
 
+export interface CustomerInfo {
+  name?: string;
+}
+
 export interface Station {
   id:               string;
   name:             string;      // internal name for backend communication (also MongoDB collection name)
   displayName:      string;      // name shown on dashboard UI
   location:         string;
+  customer?:        CustomerInfo; // optional customer details for this station
   lat?:             number;      // map latitude (decimal degrees) — optional; falls back to location lookup
   lng?:             number;      // map longitude (decimal degrees)
   zerotierIp?:      string;      // ZeroTier IP for remote access (e.g. 10.147.20.13) — copyable on the station page

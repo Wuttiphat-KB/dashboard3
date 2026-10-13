@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
+import { NextRequest, NextResponse } from 'next/server';
+import { getMongoClient } from '@/lib/mongoClient';
+import { getRequestSession } from '@/lib/authorization';
+import { canViewStation } from '@/lib/stationAccess';
 import { cachedResponse } from '@/lib/apiCache';
+
 
 const STATION_DB = 'Station';
 
@@ -27,6 +32,18 @@ const DATA_DBS = {
 
 async function buildDashboard(id: string) {
   {
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getRequestSession(req);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { id } = await params;
+
+  try {
+
     const client = await getMongoClient();
 
     // 1. Find station config from db=Station
@@ -54,9 +71,11 @@ async function buildDashboard(id: string) {
       }
     }
 
-    if (!stationConfig) {
-      throw new StationNotFound(`Station ${id} not found`);
+if (!stationConfig || !canViewStation(session, stationConfig)) {
+  throw new StationNotFound(`Station ${id} not found`);
+
     }
+    const stationId = stationConfig.id;
 
     // Per-database collection name (each db may use a different collection)
     const cols = stationConfig.mongoCollections || {};
@@ -108,12 +127,12 @@ async function buildDashboard(id: string) {
 
     // Live device status + router data + script status + plc payload + fan data + meter latest from backend
     const [liveStatuses, routerLive, scriptStatuses, plcLive, fanLive, meterLive] = await Promise.all([
-      client.db(STATION_DB).collection('_device_status').find({ stationId: id }).toArray().catch(() => []),
-      client.db(STATION_DB).collection('_router_data').findOne({ stationId: id }).catch(() => null),
-      client.db(STATION_DB).collection('_script_status').find({ stationId: id }).toArray().catch(() => []),
-      client.db(STATION_DB).collection('_plc_data').findOne({ stationId: id }).catch(() => null),
-      client.db(STATION_DB).collection('_fan_data').findOne({ stationId: id }).catch(() => null),
-      client.db(STATION_DB).collection('_meter_latest').findOne({ stationId: id }).catch(() => null),
+      client.db(STATION_DB).collection('_device_status').find({ stationId }).toArray().catch(() => []),
+      client.db(STATION_DB).collection('_router_data').findOne({ stationId }).catch(() => null),
+      client.db(STATION_DB).collection('_script_status').find({ stationId }).toArray().catch(() => []),
+      client.db(STATION_DB).collection('_plc_data').findOne({ stationId }).catch(() => null),
+      client.db(STATION_DB).collection('_fan_data').findOne({ stationId }).catch(() => null),
+      client.db(STATION_DB).collection('_meter_latest').findOne({ stationId }).catch(() => null),
     ]);
     const liveHb = liveStatuses.find((d: any) => d.device === 'heartbeat');
     const liveRt = liveStatuses.find((d: any) => d.device === 'router');
@@ -224,8 +243,9 @@ async function buildDashboard(id: string) {
 
     // 8. Alerts (from Station DB)
     const alerts = await client.db(STATION_DB).collection('_alerts')
-      .find({ stationId: id, acknowledged: false })
+      .find({ stationId, acknowledged: false })
       .sort({ timestamp: -1 }).limit(50).maxTimeMS(QUERY_MS).toArray()
+
       .catch(() => []);
 
     return {
@@ -293,7 +313,9 @@ async function buildDashboard(id: string) {
         },
       ],
       alerts,
-    };
+    const result = await buildDashboard(id);
+    return NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } });
+
   }
   // No client.close() — connection pool is shared and reused across requests.
 }
