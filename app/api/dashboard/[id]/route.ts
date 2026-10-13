@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
-import { NextRequest, NextResponse } from 'next/server';
-import { getMongoClient } from '@/lib/mongoClient';
-import { getRequestSession } from '@/lib/authorization';
-import { canViewStation } from '@/lib/stationAccess';
+import { getRequestSession, visibleStationIds } from '@/lib/authorization';
 import { cachedResponse } from '@/lib/apiCache';
-
+import { loadStations } from '@/lib/stationRepository';
 
 const STATION_DB = 'Station';
 
@@ -32,18 +29,6 @@ const DATA_DBS = {
 
 async function buildDashboard(id: string) {
   {
-}
-
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await getRequestSession(req);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const { id } = await params;
-
-  try {
-
     const client = await getMongoClient();
 
     // 1. Find station config from db=Station
@@ -71,9 +56,8 @@ export async function GET(
       }
     }
 
-if (!stationConfig || !canViewStation(session, stationConfig)) {
-  throw new StationNotFound(`Station ${id} not found`);
-
+    if (!stationConfig) {
+      throw new StationNotFound(`Station ${id} not found`);
     }
     const stationId = stationConfig.id;
 
@@ -245,7 +229,6 @@ if (!stationConfig || !canViewStation(session, stationConfig)) {
     const alerts = await client.db(STATION_DB).collection('_alerts')
       .find({ stationId, acknowledged: false })
       .sort({ timestamp: -1 }).limit(50).maxTimeMS(QUERY_MS).toArray()
-
       .catch(() => []);
 
     return {
@@ -313,9 +296,7 @@ if (!stationConfig || !canViewStation(session, stationConfig)) {
         },
       ],
       alerts,
-    const result = await buildDashboard(id);
-    return NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } });
-
+    };
   }
   // No client.close() — connection pool is shared and reused across requests.
 }
@@ -327,11 +308,21 @@ if (!stationConfig || !canViewStation(session, stationConfig)) {
  * immediately while the refresh runs behind it.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const session = await getRequestSession(req);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
   try {
+    // Scope check before touching the shared (unrestricted) per-station cache.
+    const allowedIds = await visibleStationIds(session, await getMongoClient());
+    if (allowedIds !== null) {
+      const st = (await loadStations(await getMongoClient())).find((s: any) => s.id === id || s.name === id);
+      if (!st || !allowedIds.includes(st.id)) {
+        return NextResponse.json({ error: `Station ${id} not found` }, { status: 404 });
+      }
+    }
     const { data, state, ageMs } = await cachedResponse<string>(
       `dashboard:${id}`, DASH_TTL_MS, DASH_MAX_STALE_MS,
       async () => JSON.stringify(await buildDashboard(id)),
@@ -339,7 +330,7 @@ export async function GET(
     return new NextResponse(data, {
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'no-store',
+        'Cache-Control': 'private, no-store',
         'X-Dash-Cache': `${state};age=${ageMs}ms`,
       },
     });
