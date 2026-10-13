@@ -5,12 +5,15 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useStations } from '@/lib/hooks/useStations';
 import { invalidateStations } from '@/lib/hooks/dataCache';
 import { Station } from '@/lib/types';
+import { trimCustomerInfo, validateCustomerInfo } from '@/lib/customerInfo';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
+import { useSessionAccess } from '@/components/SessionProvider';
 
 const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   name: '',
   displayName: '',
   location: '',
+  customer: {},
   lat: undefined,
   lng: undefined,
   zerotierIp: '',
@@ -78,6 +81,7 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
 }
 
 function ConfigPageInner() {
+  const { canEdit, loading: sessionLoading } = useSessionAccess();
   const { stations: fetchedStations, loading: stationsLoading } = useStations();
   const searchParams = useSearchParams();
   const router       = useRouter();
@@ -172,6 +176,11 @@ function ConfigPageInner() {
 
   const handleSave = async () => {
     setSaveError(null);
+    const customerError = validateCustomerInfo(form.customer);
+    if (customerError) {
+      setSaveError(customerError);
+      return;
+    }
     const trimmedName = form.name.trim();
     if (!trimmedName) {
       setSaveError('Station name is required');
@@ -187,6 +196,7 @@ function ConfigPageInner() {
     if (mode === 'edit' && form.id) {
       stationDoc = {
         ...form,
+        customer: trimCustomerInfo(form.customer),
         name: trimmedName,
         id: form.id,
         createdAt: stations.find(s => s.id === form.id)?.createdAt ?? new Date().toISOString(),
@@ -204,6 +214,7 @@ function ConfigPageInner() {
       if (dupName) { setSaveError(`A station with name "${trimmedName}" already exists.`); return; }
       stationDoc = {
         ...form,
+        customer: trimCustomerInfo(form.customer),
         name: trimmedName,
         id: newId,
         createdAt: new Date().toISOString(),
@@ -252,12 +263,13 @@ function ConfigPageInner() {
   const filteredStations = search.trim() === ''
     ? stations
     : stations.filter(s => {
-        const q = search.toLowerCase();
+        const q = search.trim().toLowerCase();
         return (
           (s.id          || '').toLowerCase().includes(q) ||
           (s.name        || '').toLowerCase().includes(q) ||
           (s.displayName || '').toLowerCase().includes(q) ||
-          (s.location    || '').toLowerCase().includes(q)
+          (s.location    || '').toLowerCase().includes(q) ||
+          (s.customer?.name || '').toLowerCase().includes(q)
         );
       });
 
@@ -281,6 +293,9 @@ function ConfigPageInner() {
   };
 
   // ── PIN gate ────────────────────────────────────────────────────────────────
+  if (sessionLoading || !canEdit) {
+    return <div className="card">{sessionLoading ? 'Checking access...' : 'This account has read-only access'}</div>;
+  }
   if (authState === 'checking') {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
@@ -346,7 +361,7 @@ function ConfigPageInner() {
             <input
               type="text"
               className="input"
-              placeholder="Search stations..."
+              placeholder="Search stations or customers..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{ width: 220, fontSize: 12 }}
@@ -379,6 +394,12 @@ function ConfigPageInner() {
                       {station.chargerHeads} heads · Fan {station.fanBrand} · HMI {station.hmiBrand || 'Phoenix'} · Controller {(station.controllerType || 'phoenix') === 'vector' ? 'Vector' : 'Phoenix'}
                     </span>
                   </div>
+                  {station.customer?.name && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, overflowWrap: 'anywhere' }}>
+                      <span style={{ fontWeight: 600 }}>Customer: </span>
+                      {station.customer.name}
+                    </div>
+                  )}
                   {/* Quick topic summary */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 4 }}>
                     {[
@@ -439,7 +460,7 @@ function ConfigPageInner() {
           <h1 className="section-title" style={{ fontSize: 18 }}>
             {mode === 'add' ? 'Add New Station' : `Edit — ${form.displayName || form.name || form.id}`}
           </h1>
-          <p className="section-subtitle">Configure MQTT topics, MongoDB collections, and Telegram</p>
+          <p className="section-subtitle">Configure customer information, MQTT topics, MongoDB collections, and Telegram</p>
         </div>
       </div>
 
@@ -456,6 +477,13 @@ function ConfigPageInner() {
             <InputRow label="Display Name (shown on dashboard)"
               value={form.displayName} onChange={v => setForm(f => ({ ...f, displayName: v }))}
               placeholder="e.g. บางนา สาขา 1" mono={false} />
+            <div>
+              <label className="input-label" htmlFor="customer-name">Customer</label>
+              <input id="customer-name" className="input" type="text" maxLength={200}
+                placeholder="ชื่อลูกค้า"
+                value={form.customer?.name ?? ''}
+                onChange={e => setForm(f => ({ ...f, customer: { ...f.customer, name: e.target.value } }))} />
+            </div>
             <InputRow label="Location" value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} placeholder="e.g. Bangkok – Siam Paragon" mono={false} />
             <div>
               <label className="input-label">Map Coordinates (Latitude / Longitude)</label>

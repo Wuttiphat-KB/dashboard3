@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
+import { getRequestSession } from '@/lib/authorization';
+import { canViewStation } from '@/lib/stationAccess';
 
 const STATION_DB = 'Station';
 
@@ -14,9 +16,11 @@ const DATA_DBS = {
 } as const;
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const session = await getRequestSession(req);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
 
   try {
@@ -41,9 +45,10 @@ export async function GET(
       }
     }
 
-    if (!stationConfig) {
+    if (!stationConfig || !canViewStation(session, stationConfig)) {
       return NextResponse.json({ error: `Station ${id} not found` }, { status: 404 });
     }
+    const stationId = stationConfig.id;
 
     // Per-database collection name (each db may use a different collection)
     const cols = stationConfig.mongoCollections || {};
@@ -95,12 +100,12 @@ export async function GET(
 
     // Live device status + router data + script status + plc payload + fan data + meter latest from backend
     const [liveStatuses, routerLive, scriptStatuses, plcLive, fanLive, meterLive] = await Promise.all([
-      client.db(STATION_DB).collection('_device_status').find({ stationId: id }).toArray().catch(() => []),
-      client.db(STATION_DB).collection('_router_data').findOne({ stationId: id }).catch(() => null),
-      client.db(STATION_DB).collection('_script_status').find({ stationId: id }).toArray().catch(() => []),
-      client.db(STATION_DB).collection('_plc_data').findOne({ stationId: id }).catch(() => null),
-      client.db(STATION_DB).collection('_fan_data').findOne({ stationId: id }).catch(() => null),
-      client.db(STATION_DB).collection('_meter_latest').findOne({ stationId: id }).catch(() => null),
+      client.db(STATION_DB).collection('_device_status').find({ stationId }).toArray().catch(() => []),
+      client.db(STATION_DB).collection('_router_data').findOne({ stationId }).catch(() => null),
+      client.db(STATION_DB).collection('_script_status').find({ stationId }).toArray().catch(() => []),
+      client.db(STATION_DB).collection('_plc_data').findOne({ stationId }).catch(() => null),
+      client.db(STATION_DB).collection('_fan_data').findOne({ stationId }).catch(() => null),
+      client.db(STATION_DB).collection('_meter_latest').findOne({ stationId }).catch(() => null),
     ]);
     const liveHb = liveStatuses.find((d: any) => d.device === 'heartbeat');
     const liveRt = liveStatuses.find((d: any) => d.device === 'router');
@@ -211,7 +216,7 @@ export async function GET(
 
     // 8. Alerts (from Station DB)
     const alerts = await client.db(STATION_DB).collection('_alerts')
-      .find({ stationId: id, acknowledged: false })
+      .find({ stationId, acknowledged: false })
       .sort({ timestamp: -1 }).limit(50).toArray()
       .catch(() => []);
 
@@ -280,7 +285,7 @@ export async function GET(
         },
       ],
       alerts,
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err: any) {
     console.error('[api/dashboard] error:', err?.message || err);
     return NextResponse.json({ error: err?.message || 'Unknown error' }, { status: 500 });

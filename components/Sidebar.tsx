@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSessionAccess } from './SessionProvider';
 
 const SIDEBAR_W     = 220;
 const SIDEBAR_W_COL = 52;
@@ -103,6 +104,7 @@ function NavLink({ href, label, abbr, isActive, onClick, collapsed }: {
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, theme, onToggleTheme }: Props) {
   const pathname = usePathname();
+  const { canEdit, username } = useSessionAccess();
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -193,7 +195,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
           )}
           {collapsed && <div style={{ height: 4 }} />}
 
-          {NAV_MAIN.map(({ href, label, abbr }) => (
+          {NAV_MAIN.filter(({ href }) => canEdit || !['/config', '/settings'].includes(href)).map(({ href, label, abbr }) => (
             <NavLink
               key={href}
               href={href} label={label} abbr={abbr}
@@ -253,6 +255,7 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
             whiteSpace: 'nowrap',
           }}>
             {/* Theme toggle */}
+            {username && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>{username}{!canEdit && ' · Read only'}</div>}
             <button
               onClick={onToggleTheme}
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}

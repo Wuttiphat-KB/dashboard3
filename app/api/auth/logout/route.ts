@@ -5,6 +5,7 @@ import { SESSION_COOKIE } from '@/lib/auth';
 /** POST /api/auth/logout — clears the session cookie. */
 export async function POST() {
   const jar = await cookies();
+  jar.set({ name: 'cfg_pin', value: '', path: '/', maxAge: 0, httpOnly: true, sameSite: 'lax' });
   jar.set({
     name: SESSION_COOKIE,
     value: '',

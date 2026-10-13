@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { getMongoClient } from '@/lib/mongoClient';
 import { getFleetCache } from '@/lib/fleetCache';
+import { getRequestSession } from '@/lib/authorization';
+import { canViewStation } from '@/lib/stationAccess';
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
@@ -86,7 +88,9 @@ async function loadStations(client: MongoClient): Promise<any[]> {
  * backend) — no queries against the per-station data DBs. This makes the call
  * O(7 queries) instead of O(800).
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const session = await getRequestSession(req);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const t0 = Date.now();
   const phase: Record<string, number> = {};
   const mark = (name: string, since: number) => { phase[name] = Date.now() - since; };
@@ -100,7 +104,7 @@ export async function GET() {
     const tCfg = Date.now();
     const _fleetCache = getFleetCache();
     const fromCache = !!_fleetCache.data && Date.now() - _fleetCache.at < STATION_CACHE_MS;
-    const stations = await loadStations(client);
+    const stations = (await loadStations(client)).filter(station => canViewStation(session, station));
     mark(fromCache ? `stationsCached[${stations.length}]` : `stationsLoaded[${stations.length}]`, tCfg);
 
     // 2. Load live caches in parallel — all stations in one query each.
@@ -378,7 +382,7 @@ export async function GET() {
     const total = Date.now() - t0;
     const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');
     console.log(`[api/fleet] ${summary} total=${total}ms stations=${results.length}`);
-    return NextResponse.json(results);
+    return NextResponse.json(results, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err: any) {
     const total = Date.now() - t0;
     const summary = Object.entries(phase).map(([k, v]) => `${k}=${v}ms`).join(' ');

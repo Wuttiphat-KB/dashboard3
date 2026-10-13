@@ -1,12 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
+import { requireEditor } from '@/lib/authorization';
 
 /**
  * GET /api/health
  * Lightweight liveness check — verifies MongoDB is reachable and reports basic stats.
  * Use this to isolate "is Mongo OK?" from the much heavier /api/fleet query.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = await requireEditor(req);
+  if (denied) return denied;
   const t0 = Date.now();
   try {
     const tConn = Date.now();

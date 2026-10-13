@@ -13,7 +13,7 @@ interface DailyAgg {
   updatedAt: string | null;
 }
 
-type Preset = '7d' | '30d' | 'month';
+type Preset = '7d' | '30d' | 'month' | 'custom';
 
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -41,6 +41,9 @@ export default function ChargingReportPage() {
   const { stations } = useStations();
   const [stationId, setStationId] = useState<string>('');
   const [preset, setPreset] = useState<Preset>('7d');
+  const [startDate, setStartDate] = useState<string>(() => presetRange('7d').start);
+  const [endDate, setEndDate] = useState<string>(() => presetRange('7d').end);
+  const [exporting, setExporting] = useState(false);
   const [data, setData] = useState<DailyAgg[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,11 +55,44 @@ export default function ChargingReportPage() {
     }
   }, [stations, stationId]);
 
-  const range = useMemo(() => presetRange(preset), [preset]);
+  const rangeValid = !!startDate && !!endDate && startDate <= endDate;
+  const range = useMemo(() => ({ start: startDate, end: endDate }), [startDate, endDate]);
+
+  const applyPreset = (p: Preset) => {
+    setPreset(p);
+    if (p === 'custom') return;
+    const r = presetRange(p);
+    setStartDate(r.start);
+    setEndDate(r.end);
+  };
+
+  const exportXlsx = async () => {
+    if (!stationId || !rangeValid) return;
+    setExporting(true);
+    try {
+      const r = await fetch(`/api/energy/export?stationId=${encodeURIComponent(stationId)}&start=${range.start}&end=${range.end}`);
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error || `API ${r.status}`);
+      }
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `energy_${stationId}_${range.start}_${range.end}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (err: any) {
+      alert(`Export failed: ${err?.message || err}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Fetch data when station or range changes
   useEffect(() => {
-    if (!stationId) return;
+    if (!stationId || !rangeValid) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -69,7 +105,7 @@ export default function ChargingReportPage() {
       .catch(err => { if (!cancelled) setError(err.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [stationId, range.start, range.end]);
+  }, [stationId, range.start, range.end, rangeValid]);
 
   const totals = useMemo(() => {
     if (!data) return { sessions: 0, kwh: 0, days: 0, avg: 0 };
@@ -132,7 +168,7 @@ export default function ChargingReportPage() {
               ] as { id: Preset; label: string }[]).map((p, i, arr) => (
                 <button
                   key={p.id}
-                  onClick={() => setPreset(p.id)}
+                  onClick={() => applyPreset(p.id)}
                   style={{
                     padding: '5px 12px', fontSize: 11, fontFamily: 'var(--font-geist-mono), monospace',
                     cursor: 'pointer', border: 'none',
@@ -147,6 +183,37 @@ export default function ChargingReportPage() {
               ))}
             </div>
           </div>
+
+          {/* Start / Stop date */}
+          {(['start', 'end'] as const).map(k => (
+            <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {k === 'start' ? 'Start date' : 'Stop date'}
+              </label>
+              <input
+                type="date"
+                className="input"
+                value={k === 'start' ? startDate : endDate}
+                max={k === 'start' ? (endDate || undefined) : undefined}
+                min={k === 'end' ? (startDate || undefined) : undefined}
+                onChange={e => {
+                  setPreset('custom');
+                  if (k === 'start') setStartDate(e.target.value); else setEndDate(e.target.value);
+                }}
+                style={{ padding: '4px 8px', fontSize: 11, colorScheme: 'dark' }}
+              />
+            </div>
+          ))}
+
+          {/* Export Excel */}
+          <button
+            className="btn btn-primary"
+            onClick={exportXlsx}
+            disabled={!stationId || !rangeValid || exporting}
+            style={{ padding: '5px 12px', fontSize: 11, opacity: (!stationId || !rangeValid || exporting) ? 0.5 : 1 }}
+          >
+            {exporting ? 'Exporting...' : '⬇ Export Excel'}
+          </button>
 
           <div style={{ flex: 1, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' }}>
             {selectedStation && (
@@ -170,6 +237,12 @@ export default function ChargingReportPage() {
           </div>
         ))}
       </div>
+
+      {!rangeValid && (
+        <div className="card" style={{ padding: '1rem', borderColor: 'var(--error)', color: 'var(--error-text)', marginBottom: '1rem' }}>
+          Start date must be on or before Stop date.
+        </div>
+      )}
 
       {error && (
         <div className="card" style={{ padding: '1rem', borderColor: 'var(--error)', color: 'var(--error-text)', marginBottom: '1rem' }}>

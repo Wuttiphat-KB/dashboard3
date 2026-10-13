@@ -1,0 +1,2906 @@
+{
+  "databaseStations": 229,
+  "sourceRows": 242,
+  "statusCounts": {
+    "update": 202,
+    "not-in-source": 17,
+    "source-customer-blank": 10
+  },
+  "customerCountsAfter": {
+    "PT": 65,
+    "EGAT": 131,
+    "K.บาส": 1,
+    "(blank)": 27,
+    "นิชาทัน": 5
+  },
+  "missingCustomer": [
+    {
+      "id": "VRK",
+      "name": "VRK",
+      "displayName": "Vajiralongkorn_Dam2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "KUNGPHATTHANA",
+      "name": "KungPhatthana",
+      "displayName": "KungPhatthana",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        78
+      ]
+    },
+    {
+      "id": "SIRIBAIBUN2",
+      "name": "Siribaibun2",
+      "displayName": "Siribaibun2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        168
+      ]
+    },
+    {
+      "id": "PHRAE1",
+      "name": "PHRAE5",
+      "displayName": "PHRAE5",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SIRIBAIBUN1",
+      "name": "Siribaibun1",
+      "displayName": "Siribaibun1",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        167
+      ]
+    },
+    {
+      "id": "MAHASARAKHAM2",
+      "name": "MahaSarakham2",
+      "displayName": "MahaSarakham2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        94
+      ]
+    },
+    {
+      "id": "BKN1",
+      "name": "BKN1",
+      "displayName": "SKY1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKN2",
+      "name": "BKN2",
+      "displayName": "SKY2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        211
+      ]
+    },
+    {
+      "id": "BKN3",
+      "name": "BKN3",
+      "displayName": "SKY3",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKN4",
+      "name": "BKN4",
+      "displayName": "SKY4",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        210
+      ]
+    },
+    {
+      "id": "BKN5",
+      "name": "BKN5",
+      "displayName": "SKY5",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKN6",
+      "name": "BKN6",
+      "displayName": "SKY6",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        209
+      ]
+    },
+    {
+      "id": "SKYPHRAEKSA1",
+      "name": "SKY_Phraeksa1",
+      "displayName": "SKY_Phraeksa1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYPHRAEKSA2",
+      "name": "SKY_Phraeksa2",
+      "displayName": "SKY_Phraeksa2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BANGPAHAN43",
+      "name": "BangPahan4_3",
+      "displayName": "Bangpahan4 (ตู้3)",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BANGPAHAN42",
+      "name": "BangPahan4_2",
+      "displayName": "Bangpahan4 (ตู้2)",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "JUNJIRA1",
+      "name": "Junjira1",
+      "displayName": "Junjira1",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        237
+      ]
+    },
+    {
+      "id": "JUNJIRA2",
+      "name": "Junjira2",
+      "displayName": "Junjira2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        238
+      ]
+    },
+    {
+      "id": "JUNJIRA3",
+      "name": "Junjira3",
+      "displayName": "Junjira3",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        239
+      ]
+    },
+    {
+      "id": "SKYEARLYBIRD1",
+      "name": "Sky_EarlyBird1",
+      "displayName": "SKY_EarlyBird1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYEARLYBIRD2",
+      "name": "Sky_EarlyBird2",
+      "displayName": "SKY_EarlyBird2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYCHUMPOHON1",
+      "name": "SKY_Chumpohon1",
+      "displayName": "SKY_Chumphon1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYCHUMPOHON2",
+      "name": "SKY_Chumpohon2",
+      "displayName": "SKY_Chumphon2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYCHUMPOHON3",
+      "name": "SKY_Chumpohon3",
+      "displayName": "SKY_Chumphon3",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYCHUMPOHON4",
+      "name": "SKY_Chumpohon4",
+      "displayName": "SKY_Chumphon4",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKNPATTANA1",
+      "name": "BKN_Pattana_1",
+      "displayName": "Sungmen1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKNPATTANA2",
+      "name": "BKN_Pattana_2",
+      "displayName": "Sungmen2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    }
+  ],
+  "conflicts": [],
+  "ambiguousSource": [],
+  "unmatchedSource": [
+    {
+      "row": 35,
+      "station": "BPTG_khumphaengphet",
+      "customer": "EGAT"
+    },
+    {
+      "row": 96,
+      "station": "Meamoh  1 (E3B6)",
+      "customer": "EGAT"
+    },
+    {
+      "row": 97,
+      "station": "Meamoh (ตู้ 2)",
+      "customer": "EGAT"
+    },
+    {
+      "row": 137,
+      "station": "PHRAE3",
+      "customer": "PRAE EV Station"
+    },
+    {
+      "row": 193,
+      "station": "VRK2",
+      "customer": "EGAT"
+    },
+    {
+      "row": 205,
+      "station": "PEA",
+      "customer": ""
+    },
+    {
+      "row": 207,
+      "station": "PEA120 (Test)",
+      "customer": ""
+    },
+    {
+      "row": 217,
+      "station": "39C7",
+      "customer": ""
+    },
+    {
+      "row": 218,
+      "station": "26007 sky ชุมพร",
+      "customer": ""
+    },
+    {
+      "row": 219,
+      "station": "26008 sky ชุมพร",
+      "customer": ""
+    },
+    {
+      "row": 220,
+      "station": "26009 (8419) sky ราชพฤกษ์ 1",
+      "customer": ""
+    },
+    {
+      "row": 221,
+      "station": "26010 (3947) sky ราชพฤกษ์ 2",
+      "customer": ""
+    },
+    {
+      "row": 222,
+      "station": "26011 sky ชุมพร (สาหร่าย)",
+      "customer": ""
+    },
+    {
+      "row": 223,
+      "station": "26012 sky ชุมพร",
+      "customer": ""
+    },
+    {
+      "row": 224,
+      "station": "26013 (4B6B)",
+      "customer": ""
+    },
+    {
+      "row": 225,
+      "station": "26014 (4BCC)",
+      "customer": ""
+    },
+    {
+      "row": 227,
+      "station": "cd8c",
+      "customer": ""
+    },
+    {
+      "row": 228,
+      "station": "สููงเม่น1 (0EDE)",
+      "customer": ""
+    },
+    {
+      "row": 229,
+      "station": "สูงเม่น2 (0BF5)",
+      "customer": ""
+    },
+    {
+      "row": 230,
+      "station": "120-26021",
+      "customer": ""
+    },
+    {
+      "row": 231,
+      "station": "120-26022",
+      "customer": ""
+    },
+    {
+      "row": 232,
+      "station": "150-26005",
+      "customer": ""
+    },
+    {
+      "row": 233,
+      "station": "FEC1",
+      "customer": ""
+    },
+    {
+      "row": 234,
+      "station": "D577",
+      "customer": ""
+    },
+    {
+      "row": 235,
+      "station": "RUT906_0F07",
+      "customer": ""
+    },
+    {
+      "row": 236,
+      "station": "RUT906_0FE6",
+      "customer": ""
+    }
+  ],
+  "mapping": [
+    {
+      "id": "BANGPHRA3",
+      "name": "BangPhra3",
+      "displayName": "BangPhra3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        24
+      ]
+    },
+    {
+      "id": "WACHIRABARAMI1",
+      "name": "Wachirabarami1",
+      "displayName": "Wachirabarami1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        194
+      ]
+    },
+    {
+      "id": "26003",
+      "name": "Bhutan_Gelephu",
+      "displayName": "Bhutan_Gelephu",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        213
+      ]
+    },
+    {
+      "id": "PRAWET4",
+      "name": "Prawet4",
+      "displayName": "Prawet4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        147
+      ]
+    },
+    {
+      "id": "CHATTURAT",
+      "name": "Chatturat",
+      "displayName": "Chatturat",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        43
+      ]
+    },
+    {
+      "id": "NONGBUNMAK2",
+      "name": "NongBunMak2",
+      "displayName": "NongBunMak2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        111
+      ]
+    },
+    {
+      "id": "CHALONGKRUNG1",
+      "name": "ChalongKrung1",
+      "displayName": "ChalongKrung1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        39
+      ]
+    },
+    {
+      "id": "RANONG1",
+      "name": "Ranong1",
+      "displayName": "Ranong1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        199
+      ]
+    },
+    {
+      "id": "NONGRUEA4",
+      "name": "NongRuea4",
+      "displayName": "NongRuea4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        116
+      ]
+    },
+    {
+      "id": "PHANOMSARAKHAM2",
+      "name": "PhanomSarakham2",
+      "displayName": "PhanomSarakham2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        127
+      ]
+    },
+    {
+      "id": "RATCHABURI7",
+      "name": "Ratchaburi7",
+      "displayName": "Ratchaburi7",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        151
+      ]
+    },
+    {
+      "id": "VIBHAVADIRANGSIT1",
+      "name": "VibhavadiRangsit1",
+      "displayName": "VibhavadiRangsit1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        191
+      ]
+    },
+    {
+      "id": "PHANTHONG3",
+      "name": "PhanThong3",
+      "displayName": "PhanThong3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        128
+      ]
+    },
+    {
+      "id": "NONGKHAE",
+      "name": "NongKhae",
+      "displayName": "NongKhae",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        112
+      ]
+    },
+    {
+      "id": "BANNADOEM",
+      "name": "BanNaDoem",
+      "displayName": "BanNaDoem",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        28
+      ]
+    },
+    {
+      "id": "HANGDONG7",
+      "name": "HangDong7",
+      "displayName": "HangDong7",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        49
+      ]
+    },
+    {
+      "id": "7ELEVEN_LATPHRAO126",
+      "name": "7Eleven_Latphrao126",
+      "displayName": "7-Eleven_Latphrao126",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        3
+      ]
+    },
+    {
+      "id": "THUNGTAKO1",
+      "name": "Thungtako1",
+      "displayName": "Thungtako1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        187
+      ]
+    },
+    {
+      "id": "PRANBURI2",
+      "name": "Pranburi2",
+      "displayName": "Pranburi2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        145
+      ]
+    },
+    {
+      "id": "PAIN1",
+      "name": "PaIn1",
+      "displayName": "PaIn1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        120
+      ]
+    },
+    {
+      "id": "PHETCHABUN1",
+      "name": "Phetchabun1",
+      "displayName": "Phetchabun1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        132
+      ]
+    },
+    {
+      "id": "LAMAE3",
+      "name": "Lamae3",
+      "displayName": "Lamae3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        79
+      ]
+    },
+    {
+      "id": "BANGLAMUUNG11",
+      "name": "Banglamuung11",
+      "displayName": "Banglamuung11",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        15
+      ]
+    },
+    {
+      "id": "NONGKI",
+      "name": "Nongki",
+      "displayName": "Nongki",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        115
+      ]
+    },
+    {
+      "id": "UDONTHANI",
+      "name": "UdonThani",
+      "displayName": "UdonThani5",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        188
+      ]
+    },
+    {
+      "id": "BANGPHRA2",
+      "name": "Bangphra2",
+      "displayName": "Bangphra2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        23
+      ]
+    },
+    {
+      "id": "IMPACTNOVOTEL",
+      "name": "ImpactNovotel",
+      "displayName": "ImpactNovotel",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        55
+      ]
+    },
+    {
+      "id": "KANCHANAPISEK1",
+      "name": "Kanchanapisek1",
+      "displayName": "Kanchanapisek1",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        62
+      ]
+    },
+    {
+      "id": "NIMITMAI2",
+      "name": "NimitMai2",
+      "displayName": "NimitMai2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        110
+      ]
+    },
+    {
+      "id": "PHROMPHIRAM6",
+      "name": "PhromPhiram6",
+      "displayName": "PhromPhiram6",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        141
+      ]
+    },
+    {
+      "id": "SAMKHOK3",
+      "name": "SamKhok3",
+      "displayName": "SamKhok3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        153
+      ]
+    },
+    {
+      "id": "POOMIPOL",
+      "name": "Poomipoldam",
+      "displayName": "Bhumibol_Dam",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        204
+      ]
+    },
+    {
+      "id": "KAMPHAENGPHET",
+      "name": "KamphaengPhet",
+      "displayName": "KamphaengPhet",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        60
+      ]
+    },
+    {
+      "id": "EDS_WANGNOI",
+      "name": "EDS_Wangnoi",
+      "displayName": "EDS_Wangnoi",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        46
+      ]
+    },
+    {
+      "id": "BANGPAHAN",
+      "name": "Bangpahan",
+      "displayName": "Bangpahan",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        18
+      ]
+    },
+    {
+      "id": "CHANTHABURI",
+      "name": "Chanthaburi",
+      "displayName": "Chanthaburi",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        41
+      ]
+    },
+    {
+      "id": "PRASAT6",
+      "name": "Prasat6",
+      "displayName": "Prasat6",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        146
+      ]
+    },
+    {
+      "id": "HANGCHAT2",
+      "name": "Hangchat2",
+      "displayName": "Hangchat2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        48
+      ]
+    },
+    {
+      "id": "NAKHONRATCHASIMA12",
+      "name": "Nakhonratchasima12",
+      "displayName": "Nakhonratchasima12",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        104
+      ]
+    },
+    {
+      "id": "KABINBURI7",
+      "name": "KabinBuri7",
+      "displayName": "KabinBuri7",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        57
+      ]
+    },
+    {
+      "id": "NAKHONCHAISI11_1",
+      "name": "NakhonChaiSi11_1",
+      "displayName": "NakhonChaiSi11_1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        99
+      ]
+    },
+    {
+      "id": "PHUTTHAMONTHON4",
+      "name": "Phutthamonthon4",
+      "displayName": "Phutthamonthon4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        143
+      ]
+    },
+    {
+      "id": "THANONRATUTHIT2",
+      "name": "ThanonRatUthit2",
+      "displayName": "ThanonRatUthit2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        182
+      ]
+    },
+    {
+      "id": "TACT30KW",
+      "name": "TACT30KW",
+      "displayName": "TACT30KW",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        173
+      ]
+    },
+    {
+      "id": "NAKHONCHAISI11_2",
+      "name": "NakhonChaiSi11_2",
+      "displayName": "NakhonChaiSi11_2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        100
+      ]
+    },
+    {
+      "id": "HOMEPRO_HATYAI1",
+      "name": "HomePro_Hatyai1",
+      "displayName": "HomePro_Hatyai1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        50
+      ]
+    },
+    {
+      "id": "THOEN3",
+      "name": "Thoen3",
+      "displayName": "Thoen3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        186
+      ]
+    },
+    {
+      "id": "LATPLADUK2",
+      "name": "LatPlaDuk2",
+      "displayName": "LatPlaDuk2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        89
+      ]
+    },
+    {
+      "id": "NONGKHAEM",
+      "name": "NongKhaem",
+      "displayName": "NongKhaem",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        114
+      ]
+    },
+    {
+      "id": "WATTANANAKHON3",
+      "name": "Wattananakhon3",
+      "displayName": "Wattananakhon3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        197
+      ]
+    },
+    {
+      "id": "AYUTHAYA3",
+      "name": "Ayuthaya3",
+      "displayName": "Ayuthaya3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        6
+      ]
+    },
+    {
+      "id": "BANGBUATHONG9",
+      "name": "BangBuaThong9",
+      "displayName": "BangBuaThong9",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        11
+      ]
+    },
+    {
+      "id": "BANGKHLA4",
+      "name": "BangKhla4",
+      "displayName": "BangKhla4",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        13
+      ]
+    },
+    {
+      "id": "BANBUENG9",
+      "name": "Banbueng9",
+      "displayName": "Banbueng9",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        9
+      ]
+    },
+    {
+      "id": "KAMPHAENGPHET2",
+      "name": "KamphaengPhet2",
+      "displayName": "KamphaengPhet2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        61
+      ]
+    },
+    {
+      "id": "BOROM2",
+      "name": "Borom2",
+      "displayName": "Borom2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        34
+      ]
+    },
+    {
+      "id": "KRUNGTHEPKREETHA2",
+      "name": "KrungthepKreetha2",
+      "displayName": "KrungthepKreetha2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        76
+      ]
+    },
+    {
+      "id": "NHAO",
+      "name": "Nhao",
+      "displayName": "Nhao",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        108
+      ]
+    },
+    {
+      "id": "SAMUTPRAKAN2",
+      "name": "Samutprakan2",
+      "displayName": "Samutprakan2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        155
+      ]
+    },
+    {
+      "id": "SAPHANSUNG",
+      "name": "SaphanSung",
+      "displayName": "SaphanSung",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        161
+      ]
+    },
+    {
+      "id": "CHACHOENGSAO10",
+      "name": "Chachoengsao10",
+      "displayName": "Chachoengsao10",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        37
+      ]
+    },
+    {
+      "id": "LATPHRAOWANGHIN3",
+      "name": "LatPhraoWangHin3",
+      "displayName": "LatPhraoWangHin3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        86
+      ]
+    },
+    {
+      "id": "THANONPHUTTHABUCHA1",
+      "name": "ThanonPhutthaBucha1",
+      "displayName": "ThanonPhutthaBucha1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        181
+      ]
+    },
+    {
+      "id": "NONTHABURIBRIDGE",
+      "name": "NonthaburiBridge",
+      "displayName": "NonthaburiBridge",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        118
+      ]
+    },
+    {
+      "id": "KHAOYOI",
+      "name": "KhaoYoi",
+      "displayName": "KhaoYoi",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        65
+      ]
+    },
+    {
+      "id": "WANGNOI3",
+      "name": "Wangnoi3",
+      "displayName": "Wangnoi3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        195
+      ]
+    },
+    {
+      "id": "BANGNATRAD2",
+      "name": "BangnaTrad2",
+      "displayName": "BangnaTrad2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        17
+      ]
+    },
+    {
+      "id": "26005",
+      "name": "Bhutan_Kaja_Throm",
+      "displayName": "Bhutan_Kaja_Throm",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        215
+      ]
+    },
+    {
+      "id": "LAMPHUN2",
+      "name": "lamphun2",
+      "displayName": "lamphun2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        81
+      ]
+    },
+    {
+      "id": "SWANGWEERAWONG",
+      "name": "Swangweerawong",
+      "displayName": "Swangweerawong",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        172
+      ]
+    },
+    {
+      "id": "NAKHONCHAISI11_3",
+      "name": "NakhonChaiSi11_3",
+      "displayName": "NakhonChaiSi11_3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        101
+      ]
+    },
+    {
+      "id": "LIANGMUANGCHON1",
+      "name": "LiangMuangChon1",
+      "displayName": "LiangMuangChon1",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        90
+      ]
+    },
+    {
+      "id": "NAKHONPATHOM9",
+      "name": "NakhonPathom9",
+      "displayName": "NakhonPathom9",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        103
+      ]
+    },
+    {
+      "id": "THANONCHAOKHUNTHAHAN3",
+      "name": "ThanonChaoKhunThahan3",
+      "displayName": "ThanonChaoKhunThahan3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        180
+      ]
+    },
+    {
+      "id": "MAHASARAKHAM1",
+      "name": "MahaSarakham1",
+      "displayName": "MahaSarakham1",
+      "before": "",
+      "customer": "K.บาส",
+      "status": "update",
+      "sourceRows": [
+        93
+      ]
+    },
+    {
+      "id": "NAMPHONG",
+      "name": "NamPhong",
+      "displayName": "NamPhong",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        107
+      ]
+    },
+    {
+      "id": "LATKRABANG6",
+      "name": "Latkrabang6",
+      "displayName": "Latkrabang6",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        82
+      ]
+    },
+    {
+      "id": "BANKHAI5",
+      "name": "BanKhai5",
+      "displayName": "BanKhai5",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        27
+      ]
+    },
+    {
+      "id": "SANSAI4",
+      "name": "SanSai4",
+      "displayName": "SanSai4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        160
+      ]
+    },
+    {
+      "id": "LATLUMKAEO6",
+      "name": "LatLumKaeo6",
+      "displayName": "LatLumKaeo6",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        83
+      ]
+    },
+    {
+      "id": "SANGKHA3",
+      "name": "Sangkha3",
+      "displayName": "Sangkha3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        158,
+        206
+      ]
+    },
+    {
+      "id": "MAECHAN",
+      "name": "MaeChan",
+      "displayName": "MaeChan",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        91
+      ]
+    },
+    {
+      "id": "HOMEPRO_SUKHOTHAI1",
+      "name": "HomePro_Sukhothai1",
+      "displayName": "HomePro_Sukhothai1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        53
+      ]
+    },
+    {
+      "id": "BANGPAKONG",
+      "name": "Bangpakong",
+      "displayName": "Bangpakong",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        21
+      ]
+    },
+    {
+      "id": "VRK",
+      "name": "VRK",
+      "displayName": "Vajiralongkorn_Dam2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "PHATTHANANIKHOM2",
+      "name": "Phatthananikhom2",
+      "displayName": "Phatthananikhom2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        130
+      ]
+    },
+    {
+      "id": "LATPHRAOWANGHIN5",
+      "name": "LatPhraoWangHin5",
+      "displayName": "LatPhraoWangHin5",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        88
+      ]
+    },
+    {
+      "id": "7ELEVEN_YAEKPINKLAO",
+      "name": "7Eleven_YaekPinklao",
+      "displayName": "7-Eleven_YaekPinklao",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        4
+      ]
+    },
+    {
+      "id": "NONSUNG3",
+      "name": "NonSung3",
+      "displayName": "NonSung3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        117
+      ]
+    },
+    {
+      "id": "KUNGPHATTHANA",
+      "name": "KungPhatthana",
+      "displayName": "KungPhatthana",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        78
+      ]
+    },
+    {
+      "id": "TAK2",
+      "name": "Tak2",
+      "displayName": "Tak2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        175
+      ]
+    },
+    {
+      "id": "PHANATNIKHOM3",
+      "name": "PhanatNikhom3",
+      "displayName": "PhanatNikhom3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        125
+      ]
+    },
+    {
+      "id": "PHROMBURI2",
+      "name": "PhromBuri2",
+      "displayName": "PhromBuri2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        140
+      ]
+    },
+    {
+      "id": "PHAYUHAKHIRI2",
+      "name": "PhayuhaKhiri2",
+      "displayName": "PhayuhaKhiri2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        131
+      ]
+    },
+    {
+      "id": "SAMUTPRAKAN5",
+      "name": "Samutprakan5",
+      "displayName": "Samutprakan5",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        156
+      ]
+    },
+    {
+      "id": "PAI1_SILHOUETTE",
+      "name": "Pai1_Silhouette",
+      "displayName": "Pai1_Silhouette",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        119
+      ]
+    },
+    {
+      "id": "KABINBURI9",
+      "name": "KabinBuri9",
+      "displayName": "KabinBuri9",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        58
+      ]
+    },
+    {
+      "id": "BANTAI",
+      "name": "BanTai",
+      "displayName": "BanTai",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        31
+      ]
+    },
+    {
+      "id": "KLONG4",
+      "name": "Klong4",
+      "displayName": "Klong4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        71
+      ]
+    },
+    {
+      "id": "PHITSANULOK3",
+      "name": "Phitsanulok3",
+      "displayName": "Phitsanulok3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        133
+      ]
+    },
+    {
+      "id": "PAKCHONG3",
+      "name": "PakChong3",
+      "displayName": "PakChong3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        122
+      ]
+    },
+    {
+      "id": "BANGPAHAN4",
+      "name": "BangPahan4",
+      "displayName": "BangPahan4",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        19
+      ]
+    },
+    {
+      "id": "KLONGLUANG10",
+      "name": "Klongluang10",
+      "displayName": "Klongluang10",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        72
+      ]
+    },
+    {
+      "id": "SUWINTHAWONKM28",
+      "name": "SuwinthawonKm28",
+      "displayName": "SuwinthawonKm28",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        171
+      ]
+    },
+    {
+      "id": "CHIANGRAI7",
+      "name": "Chiangrai7",
+      "displayName": "Chiangrai7",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        45
+      ]
+    },
+    {
+      "id": "BANGPRA",
+      "name": "BangPra",
+      "displayName": "BangPra",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        26
+      ]
+    },
+    {
+      "id": "SIRIBAIBUN2",
+      "name": "Siribaibun2",
+      "displayName": "Siribaibun2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        168
+      ]
+    },
+    {
+      "id": "KLAENG12",
+      "name": "Klaeng12",
+      "displayName": "Klaeng12",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        70
+      ]
+    },
+    {
+      "id": "PHANATNIKHOM7",
+      "name": "PhanatNikhom7",
+      "displayName": "PhanatNikhom7",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        126
+      ]
+    },
+    {
+      "id": "CHAROENRAT",
+      "name": "CharoenRat",
+      "displayName": "CharoenRat",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        42
+      ]
+    },
+    {
+      "id": "THANONSUKPRAYU1",
+      "name": "ThanonSukprayu1",
+      "displayName": "ThanonSukprayu1",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        183
+      ]
+    },
+    {
+      "id": "PAKCHONG5",
+      "name": "PakChong5",
+      "displayName": "PakChong5",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        123
+      ]
+    },
+    {
+      "id": "SANKAMPHAENG6",
+      "name": "SanKamphaeng6",
+      "displayName": "SanKamphaeng6",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        159
+      ]
+    },
+    {
+      "id": "LTK1",
+      "name": "LTK1",
+      "displayName": "Lamtakong_Dam1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        200
+      ]
+    },
+    {
+      "id": "CHACHOENGSAO9",
+      "name": "Chachoengsao9",
+      "displayName": "Chachoengsao9",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        38
+      ]
+    },
+    {
+      "id": "SARAPHI2",
+      "name": "Saraphi2",
+      "displayName": "Saraphi2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        162
+      ]
+    },
+    {
+      "id": "YASOTHON",
+      "name": "Yasothon",
+      "displayName": "Yasothon",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        198
+      ]
+    },
+    {
+      "id": "THEPHARAK4",
+      "name": "Thepharak4",
+      "displayName": "Thepharak4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        185
+      ]
+    },
+    {
+      "id": "7ELEVEN_BANKLANGMUEANG",
+      "name": "7Eleven_Banklangmueang",
+      "displayName": "7-Eleven_Banklangmueang",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        2
+      ]
+    },
+    {
+      "id": "TAK",
+      "name": "Tak",
+      "displayName": "Tak",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        174
+      ]
+    },
+    {
+      "id": "PHUTTHAMONTHON3",
+      "name": "Phutthamonthon3",
+      "displayName": "Phutthamonthon3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        142
+      ]
+    },
+    {
+      "id": "KLAENG11",
+      "name": "Klaeng11",
+      "displayName": "Klaeng11",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        69
+      ]
+    },
+    {
+      "id": "WANGNOI4",
+      "name": "Wangnoi4",
+      "displayName": "Wangnoi4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        196
+      ]
+    },
+    {
+      "id": "TASAI2",
+      "name": "TaSai2",
+      "displayName": "TaSai2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        177
+      ]
+    },
+    {
+      "id": "PHITSANULOK5",
+      "name": "Phitsanulok5",
+      "displayName": "Phitsanulok5",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        134
+      ]
+    },
+    {
+      "id": "BUENGKUM3",
+      "name": "BuengKum3",
+      "displayName": "BuengKum3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        36
+      ]
+    },
+    {
+      "id": "26006",
+      "name": "Bhutan_Changlimithang",
+      "displayName": "Bhutan_Changlimithang",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        216
+      ]
+    },
+    {
+      "id": "VRK1",
+      "name": "VRK1",
+      "displayName": "Vajiralongkorn_Dam1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        192
+      ]
+    },
+    {
+      "id": "TAPHONG3",
+      "name": "Taphong3",
+      "displayName": "Taphong3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        176
+      ]
+    },
+    {
+      "id": "NP1",
+      "name": "NP1",
+      "displayName": "NamPhong_PowerPlant1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        201
+      ]
+    },
+    {
+      "id": "KUIBURI",
+      "name": "KuiBuri",
+      "displayName": "KuiBuri",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        77
+      ]
+    },
+    {
+      "id": "KINGKAEW2",
+      "name": "KingKaew2",
+      "displayName": "KingKaew2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        68
+      ]
+    },
+    {
+      "id": "PHRAEKKASA",
+      "name": "Phraekkasa",
+      "displayName": "Phraekkasa",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        138
+      ]
+    },
+    {
+      "id": "LATPHRAOWANGHIN4",
+      "name": "LatPhraoWangHin4",
+      "displayName": "LatPhraoWangHin4",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        87
+      ]
+    },
+    {
+      "id": "THEPHARAK2",
+      "name": "Thepharak2",
+      "displayName": "Thepharak2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        184
+      ]
+    },
+    {
+      "id": "BANPO3",
+      "name": "BanPo3",
+      "displayName": "BanPo3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        30
+      ]
+    },
+    {
+      "id": "PHUTTHAMONTHON5",
+      "name": "Phutthamonthon5",
+      "displayName": "Phutthamonthon5",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        144
+      ]
+    },
+    {
+      "id": "KHAOKHANSONG",
+      "name": "KhaoKhansong",
+      "displayName": "KhaoKhansong",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        64
+      ]
+    },
+    {
+      "id": "RAMA2KM53",
+      "name": "Rama2km53",
+      "displayName": "Rama2km53",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        149
+      ]
+    },
+    {
+      "id": "RATCHAPHRUEK",
+      "name": "Ratchaphruek",
+      "displayName": "Ratchaphruek",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        152
+      ]
+    },
+    {
+      "id": "JPARK1",
+      "name": "JPARK1",
+      "displayName": "JPARK1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        56
+      ]
+    },
+    {
+      "id": "SNR1",
+      "name": "SNR1",
+      "displayName": "Srinagarind_Dam1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        169
+      ]
+    },
+    {
+      "id": "MUKDAHAN1",
+      "name": "Mukdahan1",
+      "displayName": "Mukdahan1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        98
+      ]
+    },
+    {
+      "id": "SOPPRAP",
+      "name": "SopPrap",
+      "displayName": "SopPrap",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        170
+      ]
+    },
+    {
+      "id": "MAHASARAKHAM",
+      "name": "MahaSarakham",
+      "displayName": "MahaSarakham",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        92
+      ]
+    },
+    {
+      "id": "KLONGLUANG4",
+      "name": "Klongluang4",
+      "displayName": "Klongluang4",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        74
+      ]
+    },
+    {
+      "id": "RAMINTHRA40",
+      "name": "RamInthra40",
+      "displayName": "RamInthra40",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        150
+      ]
+    },
+    {
+      "id": "NAKHONLUANG4",
+      "name": "NakhonLuang4",
+      "displayName": "NakhonLuang4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        102
+      ]
+    },
+    {
+      "id": "BANGPOKONG2",
+      "name": "Bangpokong2",
+      "displayName": "Bangpakong2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        25
+      ]
+    },
+    {
+      "id": "BANBUENG10",
+      "name": "Banbueng10",
+      "displayName": "Banbueng10",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        8
+      ]
+    },
+    {
+      "id": "UTTARADIT",
+      "name": "Uttaradit",
+      "displayName": "Uttaradit",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        190
+      ]
+    },
+    {
+      "id": "KAENGKHOI2",
+      "name": "KaengKhoi2",
+      "displayName": "KaengKhoi2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        59
+      ]
+    },
+    {
+      "id": "BANBUENG1",
+      "name": "Banbueng1",
+      "displayName": "Banbueng1",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        7
+      ]
+    },
+    {
+      "id": "MANOROM2",
+      "name": "Manorom2",
+      "displayName": "Manorom2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        95
+      ]
+    },
+    {
+      "id": "LAMLUKKA8",
+      "name": "LamLukKa8",
+      "displayName": "LamLukKa8",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        80
+      ]
+    },
+    {
+      "id": "HOMEPRO_LATKRABANG",
+      "name": "Homepro_LatKrabang",
+      "displayName": "Homepro_LatKrabang",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        51
+      ]
+    },
+    {
+      "id": "SAMUTSONGKHRAM4",
+      "name": "Samutsongkhram4",
+      "displayName": "Samutsongkhram4",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        157
+      ]
+    },
+    {
+      "id": "PAKTHONGCHAI2",
+      "name": "PakThongChai2",
+      "displayName": "PakThongChai2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        124
+      ]
+    },
+    {
+      "id": "NAKHONSAWAN2",
+      "name": "NakhonSawan2",
+      "displayName": "NakhonSawan2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        106
+      ]
+    },
+    {
+      "id": "BANGBUATHONG4",
+      "name": "BangBuaThong4",
+      "displayName": "BangBuaThong4",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        10
+      ]
+    },
+    {
+      "id": "BANGPAIN3",
+      "name": "BangPaIn3",
+      "displayName": "BangPaIn3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        20
+      ]
+    },
+    {
+      "id": "NAKHONRATCHASIMA8",
+      "name": "NakhonRatchasima8",
+      "displayName": "NakhonRatchasima8",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        105
+      ]
+    },
+    {
+      "id": "SRT1",
+      "name": "SRT1",
+      "displayName": "Sirindhorn_Dam1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        202
+      ]
+    },
+    {
+      "id": "KROKPHRA2",
+      "name": "KrokPhra2",
+      "displayName": "KrokPhra2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        75
+      ]
+    },
+    {
+      "id": "PAKCHONG2",
+      "name": "PakChong2",
+      "displayName": "PakChong2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        121
+      ]
+    },
+    {
+      "id": "SIKHIO1",
+      "name": "Sikhio1",
+      "displayName": "Sikhio1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        163
+      ]
+    },
+    {
+      "id": "KANCHANAPISEK2",
+      "name": "Kanchanapisek2",
+      "displayName": "Kanchanapisek2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        63
+      ]
+    },
+    {
+      "id": "SAMROIYOT1",
+      "name": "SamRoiYot1",
+      "displayName": "SamRoiYot1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        154
+      ]
+    },
+    {
+      "id": "PHRAE1",
+      "name": "PHRAE5",
+      "displayName": "PHRAE5",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SIRIBAIBUN1",
+      "name": "Siribaibun1",
+      "displayName": "Siribaibun1",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        167
+      ]
+    },
+    {
+      "id": "BDMS_PATTAYA",
+      "name": "BDMS_Pattaya",
+      "displayName": "BDMS_Pattaya",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        33
+      ]
+    },
+    {
+      "id": "BANGBUATONG12",
+      "name": "BangBuaTong12",
+      "displayName": "BangBuaThong12",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        12
+      ]
+    },
+    {
+      "id": "EGCO",
+      "name": "EGCO",
+      "displayName": "EGCO",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        47
+      ]
+    },
+    {
+      "id": "CHALONGKRUNG2",
+      "name": "ChalongKrung2",
+      "displayName": "ChalongKrung2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        40
+      ]
+    },
+    {
+      "id": "BANGKHUNTHIAN1",
+      "name": "BangKhunThian1",
+      "displayName": "BangKhunThian1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        14
+      ]
+    },
+    {
+      "id": "NONGKHAE5",
+      "name": "NongKhae5",
+      "displayName": "NongKhae5",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        113
+      ]
+    },
+    {
+      "id": "MAHASARAKHAM2",
+      "name": "MahaSarakham2",
+      "displayName": "MahaSarakham2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        94
+      ]
+    },
+    {
+      "id": "BANGNATRAD1",
+      "name": "BangnaTrad1",
+      "displayName": "BangnaTrad1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        16
+      ]
+    },
+    {
+      "id": "LATPHRAOWANGHIN1",
+      "name": "LatPhraoWangHin1",
+      "displayName": "LatPhraoWangHin1",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        84
+      ]
+    },
+    {
+      "id": "NIKOMPATTANA5",
+      "name": "Nikompattana5",
+      "displayName": "Nikompattana5",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        109
+      ]
+    },
+    {
+      "id": "BANTAK1",
+      "name": "BanTak1",
+      "displayName": "BanTak1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        32
+      ]
+    },
+    {
+      "id": "UTHAI",
+      "name": "UThai",
+      "displayName": "UThai",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        189
+      ]
+    },
+    {
+      "id": "SIRACHA8",
+      "name": "Siracha8",
+      "displayName": "Siracha8",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        166
+      ]
+    },
+    {
+      "id": "KLONGLUANG3",
+      "name": "Klongluang3",
+      "displayName": "Klongluang3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        73
+      ]
+    },
+    {
+      "id": "THAMAKA3",
+      "name": "ThaMaka3",
+      "displayName": "ThaMaka3",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        178
+      ]
+    },
+    {
+      "id": "BANPHOTPHISAI3",
+      "name": "BanphotPhisai3",
+      "displayName": "BanphotPhisai3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        29
+      ]
+    },
+    {
+      "id": "LATPHRAOWANGHIN2",
+      "name": "LatPhraoWangHin2",
+      "displayName": "LatPhraoWangHin2",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        85
+      ]
+    },
+    {
+      "id": "KHLONGLUANG6",
+      "name": "KhlongLuang6",
+      "displayName": "KlongLuang6",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        66,
+        67
+      ]
+    },
+    {
+      "id": "SIRACHA7",
+      "name": "Siracha7",
+      "displayName": "Siracha7",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        165
+      ]
+    },
+    {
+      "id": "AMPHAWA1",
+      "name": "Amphawa1",
+      "displayName": "Amphawa1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        5
+      ]
+    },
+    {
+      "id": "HOMEPRO_NAKHONRATCHASIMA1",
+      "name": "HomePro_Nakhonratchasima1",
+      "displayName": "HomePro_Nakhonratchasima1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        52
+      ]
+    },
+    {
+      "id": "THANONCHAN",
+      "name": "ThanonChan",
+      "displayName": "ThanonChan",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        179
+      ]
+    },
+    {
+      "id": "PHRATEP1",
+      "name": "Phratep1",
+      "displayName": "Phratep1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        139
+      ]
+    },
+    {
+      "id": "HUAIPHUENG",
+      "name": "HuaiPhueng",
+      "displayName": "HuaiPhueng",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        54
+      ]
+    },
+    {
+      "id": "BANGPAKONG3",
+      "name": "Bangpakong3",
+      "displayName": "Bangpakong3",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        22
+      ]
+    },
+    {
+      "id": "SIKHIO6",
+      "name": "Sikhio6",
+      "displayName": "Sikhio6",
+      "before": "",
+      "customer": "PT",
+      "status": "update",
+      "sourceRows": [
+        164
+      ]
+    },
+    {
+      "id": "PHATTHANANIKHOM1",
+      "name": "Phatthananikhom1",
+      "displayName": "Phatthananikhom1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        129
+      ]
+    },
+    {
+      "id": "CHIANGMAI1",
+      "name": "Chiangmai1",
+      "displayName": "Chiangmai1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        44
+      ]
+    },
+    {
+      "id": "26004",
+      "name": "Bhutan_Nemjo",
+      "displayName": "Bhutan_Paro",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        214
+      ]
+    },
+    {
+      "id": "RAMA2KM26",
+      "name": "Rama2km26",
+      "displayName": "Rama2km26",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        148
+      ]
+    },
+    {
+      "id": "BKN1",
+      "name": "BKN1",
+      "displayName": "SKY1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKN2",
+      "name": "BKN2",
+      "displayName": "SKY2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        211
+      ]
+    },
+    {
+      "id": "BKN3",
+      "name": "BKN3",
+      "displayName": "SKY3",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKN4",
+      "name": "BKN4",
+      "displayName": "SKY4",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        210
+      ]
+    },
+    {
+      "id": "BKN5",
+      "name": "BKN5",
+      "displayName": "SKY5",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKN6",
+      "name": "BKN6",
+      "displayName": "SKY6",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        209
+      ]
+    },
+    {
+      "id": "SIRIKITDAM",
+      "name": "Sirikitdam",
+      "displayName": "Sirikit_Dam",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        203
+      ]
+    },
+    {
+      "id": "SKYPHRAEKSA1",
+      "name": "SKY_Phraeksa1",
+      "displayName": "SKY_Phraeksa1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYPHRAEKSA2",
+      "name": "SKY_Phraeksa2",
+      "displayName": "SKY_Phraeksa2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BANGPAHAN43",
+      "name": "BangPahan4_3",
+      "displayName": "Bangpahan4 (ตู้3)",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BANGPAHAN42",
+      "name": "BangPahan4_2",
+      "displayName": "Bangpahan4 (ตู้2)",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "JUNJIRA1",
+      "name": "Junjira1",
+      "displayName": "Junjira1",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        237
+      ]
+    },
+    {
+      "id": "JUNJIRA2",
+      "name": "Junjira2",
+      "displayName": "Junjira2",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        238
+      ]
+    },
+    {
+      "id": "JUNJIRA3",
+      "name": "Junjira3",
+      "displayName": "Junjira3",
+      "before": "",
+      "customer": "",
+      "status": "source-customer-blank",
+      "sourceRows": [
+        239
+      ]
+    },
+    {
+      "id": "SKYEARLYBIRD1",
+      "name": "Sky_EarlyBird1",
+      "displayName": "SKY_EarlyBird1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYEARLYBIRD2",
+      "name": "Sky_EarlyBird2",
+      "displayName": "SKY_EarlyBird2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "PHRAE1240",
+      "name": "PHRAE1_240",
+      "displayName": "PHRAE1",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        135,
+        240
+      ]
+    },
+    {
+      "id": "PHRAE2240",
+      "name": "PHRAE2_240",
+      "displayName": "PHRAE2",
+      "before": "",
+      "customer": "EGAT",
+      "status": "update",
+      "sourceRows": [
+        136,
+        241
+      ]
+    },
+    {
+      "id": "SKYCHUMPOHON1",
+      "name": "SKY_Chumpohon1",
+      "displayName": "SKY_Chumphon1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYCHUMPOHON2",
+      "name": "SKY_Chumpohon2",
+      "displayName": "SKY_Chumphon2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYCHUMPOHON3",
+      "name": "SKY_Chumpohon3",
+      "displayName": "SKY_Chumphon3",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "SKYCHUMPOHON4",
+      "name": "SKY_Chumpohon4",
+      "displayName": "SKY_Chumphon4",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "EVSPACENAKHONSITHAMMARAT1",
+      "name": "EVspace_Nakhonsithammarat1",
+      "displayName": "EVspace_Nakhonsithammarat1",
+      "before": "",
+      "customer": "นิชาทัน",
+      "status": "update",
+      "sourceRows": [
+        242
+      ]
+    },
+    {
+      "id": "EVSPACENAKHONSITHAMMARAT2",
+      "name": "EVspace_Nakhonsithammarat2",
+      "displayName": "EVspace_Nakhonsithammarat2",
+      "before": "",
+      "customer": "นิชาทัน",
+      "status": "update",
+      "sourceRows": [
+        243
+      ]
+    },
+    {
+      "id": "EVSPACENAKHONSITHAMMARAT3",
+      "name": "EVspace_Nakhonsithammarat3",
+      "displayName": "EVspace_Nakhonsithammarat3",
+      "before": "",
+      "customer": "นิชาทัน",
+      "status": "update",
+      "sourceRows": [
+        244
+      ]
+    },
+    {
+      "id": "EVSPACENAKHONSITHAMMARAT4",
+      "name": "EVspace_Nakhonsithammarat4",
+      "displayName": "EVspace_Nakhonsithammarat4",
+      "before": "",
+      "customer": "นิชาทัน",
+      "status": "update",
+      "sourceRows": [
+        245
+      ]
+    },
+    {
+      "id": "EVSPACENAKHONSITHAMMARAT5",
+      "name": "EVspace_Nakhonsithammarat5",
+      "displayName": "EVspace_Nakhonsithammarat5",
+      "before": "",
+      "customer": "นิชาทัน",
+      "status": "update",
+      "sourceRows": [
+        246
+      ]
+    },
+    {
+      "id": "BKNPATTANA1",
+      "name": "BKN_Pattana_1",
+      "displayName": "Sungmen1",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    },
+    {
+      "id": "BKNPATTANA2",
+      "name": "BKN_Pattana_2",
+      "displayName": "Sungmen2",
+      "before": "",
+      "customer": "",
+      "status": "not-in-source",
+      "sourceRows": []
+    }
+  ]
+}
