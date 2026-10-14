@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface Props {
   stationId: string;
@@ -8,8 +8,10 @@ interface Props {
 
 interface LogView {
   name: string;
-  totalLines: number;
+  totalLines: number | null;   // null when only the end of the file was fetched
   lines: string[];
+  partial?: boolean;
+  timing?: { network: number; charger: number; bytes: number; cached: boolean; totalMs: number };
 }
 
 const TAIL_OPTIONS = [200, 500, 1000, 5000];
@@ -41,35 +43,57 @@ export default function VseccLogPanel({ stationId }: Props) {
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // File list
+  // First open (and ↻ Refresh): list + default file in ONE request.
+  // Changing file / line count afterwards hits the server cache (fast).
+  const [fresh, setFresh] = useState(false);
+  const loadedFor = useRef<string>('');
+
   useEffect(() => {
     let cancelled = false;
     setFiles(null);
     setFilesError(null);
-    apiJson(base)
+    setViewLoading(true);
+    setViewError(null);
+    apiJson(`${base}&withList=1&tail=${tail}${fresh ? '&fresh=1' : ''}`)
       .then(j => {
         if (cancelled) return;
-        const list: string[] = j.files || [];
-        setFiles(list);
-        setSelected(prev => prev && list.includes(prev) ? prev
-          : list.find(f => f.startsWith('charging-manager')) || list[0] || '');
+        setFiles(j.files || []);
+        loadedFor.current = `${j.name}|${tail}`;
+        setSelected(j.name || '');
+        setView(j.name ? j : null);
       })
-      .catch(err => { if (!cancelled) setFilesError(err.message); });
+      .catch(err => { if (!cancelled) setFilesError(err.message); })
+      .finally(() => { if (!cancelled) { setViewLoading(false); setFresh(false); } });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, reloadKey]);
 
-  // Selected file content
+  // Another file or line count chosen.
   useEffect(() => {
-    if (!selected) { setView(null); return; }
+    if (!selected || !files) return;
+    const key = `${selected}|${tail}`;
+    if (loadedFor.current === key) return;
     let cancelled = false;
     setViewLoading(true);
     setViewError(null);
     apiJson(`${base}&name=${encodeURIComponent(selected)}&tail=${tail}`)
-      .then(j => { if (!cancelled) setView(j); })
+      .then(j => { if (!cancelled) { loadedFor.current = key; setView(j); } })
       .catch(err => { if (!cancelled) { setViewError(err.message); setView(null); } })
       .finally(() => { if (!cancelled) setViewLoading(false); });
     return () => { cancelled = true; };
-  }, [base, selected, tail, reloadKey]);
+  }, [base, selected, tail, files]);
+
+  const refresh = () => { setFresh(true); setReloadKey(k => k + 1); };
+
+  // Seconds counter shown next to the spinner while a request is in flight.
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!viewLoading) return;
+    setElapsed(0);
+    const started = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [viewLoading]);
 
   const shown = useMemo(() => {
     if (!view) return [];
@@ -90,7 +114,7 @@ export default function VseccLogPanel({ stationId }: Props) {
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
           Check VSECC_USERNAME / VSECC_PASSWORD / VSECC_URL_TEMPLATE in .env.local and that this server can reach the charger.
         </div>
-        <button className="btn btn-secondary" style={{ marginTop: 10, fontSize: 11 }} onClick={() => setReloadKey(k => k + 1)}>↻ Retry</button>
+        <button className="btn btn-secondary" style={{ marginTop: 10, fontSize: 11 }} onClick={refresh}>↻ Retry</button>
       </div>
     );
   }
@@ -104,7 +128,7 @@ export default function VseccLogPanel({ stationId }: Props) {
             <label style={label}>Log file</label>
             <select className="input" value={selected} onChange={e => setSelected(e.target.value)}
               disabled={!files} style={{ padding: '4px 8px', fontSize: 11, minWidth: 220 }}>
-              {!files && <option>Loading...</option>}
+              {!files && <option>⏳ Loading...</option>}
               {files?.length === 0 && <option value="">No log files</option>}
               {files?.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
@@ -129,8 +153,10 @@ export default function VseccLogPanel({ stationId }: Props) {
             Errors / warnings only
           </label>
 
-          <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11 }}
-            onClick={() => setReloadKey(k => k + 1)}>↻ Refresh</button>
+          <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            onClick={refresh} disabled={viewLoading}>
+            {viewLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '↻'} Refresh
+          </button>
           <a className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none', opacity: selected ? 1 : 0.5, pointerEvents: selected ? 'auto' : 'none' }}
             href={`${base}&name=${encodeURIComponent(selected)}&download=1`}>⬇ File</a>
           <a className="btn btn-primary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none' }}
@@ -143,12 +169,35 @@ export default function VseccLogPanel({ stationId }: Props) {
         <div className="card-header">
           <span className="card-title">{selected || 'Log'}</span>
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-            {view ? `showing ${shown.length} of last ${view.lines.length} / ${view.totalLines} lines` : ''}
+            {viewLoading && <><span className="spinner" style={{ width: 12, height: 12, marginRight: 6 }} />loading {elapsed}s{view ? ' · ' : ''}</>}
+            {view ? `showing ${shown.length} of last ${view.lines.length}${view.totalLines != null ? ` / ${view.totalLines}` : ''} lines` : ''}
+            {view?.timing && (
+              <span title={`ZeroTier ${view.timing.network} ms · charger ${view.timing.charger} ms · ${Math.round(view.timing.bytes / 1024)} KB`}>
+                {' · '}{view.timing.cached ? 'cached' : `${(view.timing.totalMs / 1000).toFixed(1)} s`}
+              </span>
+            )}
           </span>
         </div>
         {viewError && <div style={{ padding: '1rem', color: 'var(--error-text)', fontSize: 12 }}>{viewError}</div>}
-        {viewLoading && !view && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Loading log...</div>}
+        {viewLoading && !view && (
+          <div style={{ padding: '2.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: 'var(--text-muted)', fontSize: 12 }}>
+            <span className="spinner spinner-lg" />
+            <div>Loading log... {elapsed}s</div>
+            {elapsed >= 3 && (
+              <div style={{ fontSize: 11 }}>Connecting to the charger over ZeroTier — first load or switching station can take 10–30 s</div>
+            )}
+          </div>
+        )}
         {view && (
+          <div style={{ position: 'relative' }}>
+          {viewLoading && (
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 10, fontSize: 12, color: 'var(--text-secondary)', pointerEvents: 'none',
+            }}>
+              <span className="spinner spinner-lg" /> {elapsed}s
+            </div>
+          )}
           <pre style={{
             margin: 0, padding: '0.75rem 1rem', maxHeight: 600, overflow: 'auto',
             fontSize: 11, lineHeight: 1.5, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
@@ -158,6 +207,7 @@ export default function VseccLogPanel({ stationId }: Props) {
               ? <span style={{ color: 'var(--text-muted)' }}>No matching lines</span>
               : shown.map((l, i) => <div key={i} style={{ color: levelColor(l) || 'var(--text-secondary)' }}>{l}</div>)}
           </pre>
+          </div>
         )}
       </div>
     </div>
