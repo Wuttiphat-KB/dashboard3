@@ -278,9 +278,37 @@ export async function withStationVsecc<T>(
   });
 }
 
-/** True while an offline station is waiting out its back-off. */
+const PROCESS_START = (g.__vseccProcessStart ??= Date.now()) as number;
+
+/**
+ * True while an offline station is waiting out its back-off. A back-off set
+ * before this server started is ignored, so a restart retries everyone at once.
+ */
 export function inBackoff(state: StationState | null): boolean {
-  return !!state?.nextTryAt && Date.now() < new Date(state.nextTryAt).getTime();
+  if (!state?.nextTryAt || !state.lastRunAt || new Date(state.lastRunAt).getTime() < PROCESS_START) return false;
+  return Date.now() < new Date(state.nextTryAt).getTime();
+}
+
+// Only one process may run the background loop (a second dashboard process just serves the stored logs).
+const COLLECTOR_LOCK = path.join(os.tmpdir(), 'ev-dashboard-vsecc-collector.lock');
+const COLLECTOR_STALE_MS = 2 * 60_000;
+let otherOwnerLogged = '';
+async function holdCollectorLock(): Promise<boolean> {
+  try {
+    const st = await fs.stat(COLLECTOR_LOCK).catch(() => null);
+    const owner = st ? (await fs.readFile(COLLECTOR_LOCK, 'utf8').catch(() => '')).trim() : '';
+    if (st && owner && owner !== String(process.pid) && Date.now() - st.mtimeMs < COLLECTOR_STALE_MS) {
+      if (otherOwnerLogged !== owner) {
+        otherOwnerLogged = owner;
+        console.warn(`[vsecc-collector] another dashboard process (pid ${owner}) is already collecting — this one only serves stored logs. ` +
+          'Run only ONE dashboard process on this server.');
+      }
+      return false;
+    }
+    await fs.writeFile(COLLECTOR_LOCK, String(process.pid));
+    otherOwnerLogged = '';
+    return true;
+  } catch { return true; }
 }
 
 /**
@@ -387,6 +415,7 @@ export function startVseccCollector(): void {
     for (;;) {
       const t0 = Date.now();
       loopStatus.cycleStartedAt = new Date(t0).toISOString();
+      if (!(await holdCollectorLock())) { loopStatus.current = null; await sleep(60_000); continue; }
       try {
         const all = await loadStations(await getMongoClient());
         const vector = all.filter((s: any) => s.controllerType === 'vector' && (s.vseccApiUrl || s.zerotierIp));
@@ -395,6 +424,7 @@ export function startVseccCollector(): void {
         for (const st of vector) {
           // Offline chargers are retried on a back-off (2 → 30 min) so they don't slow down the others.
           if (inBackoff(await readState(String(st.id)))) { offline++; continue; }
+          if (!(await holdCollectorLock())) break;        // refresh our claim; stop if another process took over
           loopStatus.current = String(st.id);
           const r = await collectStation(st, all).catch(() => null);
           if (r?.lastError) offline++;

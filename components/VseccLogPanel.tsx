@@ -277,7 +277,7 @@ export default function VseccLogPanel({ stationId }: Props) {
             {!view.collector.running && <span>background collector is off — showing what was stored</span>}
             {view.collector.lastError && (
               <span style={{ color: 'var(--warn-text)' }}>
-                ⚠ Charger offline? last attempt {ago(view.collector.lastRunAt, now)}: {view.collector.lastError}
+                ⚠ Cannot reach charger — last attempt {ago(view.collector.lastRunAt, now)}: {view.collector.lastError}
                 {view.collector.nextTryAt && new Date(view.collector.nextTryAt).getTime() > now
                   ? ` — next automatic try in ${Math.ceil((new Date(view.collector.nextTryAt).getTime() - now) / 60_000)} min (↻ Refresh to try now)` : ''}
               </span>

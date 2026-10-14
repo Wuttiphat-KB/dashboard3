@@ -18,7 +18,9 @@
  *                          this long without a Manager Log request (0 = stay joined)
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, promises as fsp } from 'fs';
+import os from 'os';
+import path from 'path';
 
 const CENTRAL = process.env.ZEROTIER_CENTRAL_URL || 'https://api.zerotier.com/api/v1';
 const DEFAULT_AUTHTOKEN_PATH = 'C:\\ProgramData\\ZeroTier\\One\\authtoken.secret';
@@ -93,13 +95,47 @@ async function central(path: string, init: RequestInit = {}): Promise<any> {
 const g = globalThis as any;
 g.__ztQueue ??= Promise.resolve();
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// The in-process queue above only protects one Node process. If two dashboard
+// processes run on the same server (e.g. an old one left running), they would
+// switch ZeroTier networks under each other. A lock file in the temp folder
+// serialises them too. A holder that dies leaves a stale file, taken over after LOCK_STALE_MS.
+const LOCK_FILE = path.join(os.tmpdir(), 'ev-dashboard-zerotier.lock');
+const LOCK_STALE_MS = 3 * 60_000;
+
+async function withFileLock<T>(fn: () => Promise<T>): Promise<T> {
+  let warned = false;
+  for (;;) {
+    try {
+      const fh = await fsp.open(LOCK_FILE, 'wx');
+      await fh.writeFile(`${process.pid}`);
+      await fh.close();
+      break;
+    } catch (err: any) {
+      if (err?.code !== 'EEXIST') { console.warn('[zerotier] cannot create lock file, continuing without it:', err?.message); return fn(); }
+      const st = await fsp.stat(LOCK_FILE).catch(() => null);
+      if (!st || Date.now() - st.mtimeMs > LOCK_STALE_MS) { await fsp.unlink(LOCK_FILE).catch(() => {}); continue; }
+      if (!warned) {
+        warned = true;
+        const owner = (await fsp.readFile(LOCK_FILE, 'utf8').catch(() => '')).trim();
+        if (owner && owner !== String(process.pid)) console.log(`[zerotier] waiting for process ${owner} (another dashboard process is using ZeroTier)`);
+      }
+      await sleep(500);
+    }
+  }
+  // Keep the lock fresh during long transfers.
+  const keep = setInterval(() => { const t = new Date(); fsp.utimes(LOCK_FILE, t, t).catch(() => {}); }, 30_000);
+  try { return await fn(); }
+  finally { clearInterval(keep); await fsp.unlink(LOCK_FILE).catch(() => {}); }
+}
+
 function exclusive<T>(fn: () => Promise<T>): Promise<T> {
-  const run = g.__ztQueue.then(fn, fn);
+  const locked = () => withFileLock(fn);
+  const run = g.__ztQueue.then(locked, locked);
   g.__ztQueue = run.catch(() => {});
   return run;
 }
-
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // ── Route-overlap detection ──────────────────────────────────────────────
 function parseCidr(cidr: string): { net: number; bits: number } | null {
