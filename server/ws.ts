@@ -12,21 +12,17 @@ const customerLookups = new Map<string, Promise<string | null>>();
 let stationLookup = (stationId: string): Promise<CustomerStation | null> =>
   getStationDb().collection<CustomerStation & { id: string }>('_stations').findOne({ id: stationId }, { projection: { customer: 1 } });
 
-// stationId → customer name, cached briefly so a burst of MQTT messages costs one lookup.
-const customerCache = new Map<string, { name: string | null; at: number }>();
-const CUSTOMER_CACHE_MS = 30_000;
-
-/** Coalesce concurrent lookups for the same station; resolves null on errors (never send). */
+/**
+ * Coalesce concurrent lookups for the same station; resolves null on errors (never send).
+ * Deliberately not cached across messages: reassigning a station to another
+ * customer must stop delivery to the old customer's sockets immediately.
+ */
 function stationCustomer(stationId: string): Promise<string | null> {
-  const hit = customerCache.get(stationId);
-  if (hit && Date.now() - hit.at < CUSTOMER_CACHE_MS) return Promise.resolve(hit.name);
   const pending = customerLookups.get(stationId);
   if (pending) return pending;
   const check = Promise.resolve().then(async () => {
     const station = await stationLookup(stationId);
-    const name = station?.customer?.name?.trim() || null;
-    customerCache.set(stationId, { name, at: Date.now() });
-    return name;
+    return station?.customer?.name?.trim() || null;
   }).catch(() => null).finally(() => customerLookups.delete(stationId));
   customerLookups.set(stationId, check);
   return check;

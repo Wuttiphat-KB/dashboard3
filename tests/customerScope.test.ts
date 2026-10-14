@@ -23,7 +23,7 @@ function matches(doc: Doc, query: Doc): boolean {
   });
 }
 
-test('PTG only receives PT stations across lists, details, alerts, energy and statistics', async () => {
+test('customer account only receives its customer\'s stations across lists, details, alerts, energy and statistics', async () => {
   process.env.MONGO_URI = 'mongodb://localhost:27017/customer-scope-test';
   const stations = [
     { id: 'PT-1', name: 'PT-STATION', customer: { name: 'PT' }, mqttTopics: {} },
@@ -32,6 +32,7 @@ test('PTG only receives PT stations across lists, details, alerts, energy and st
     { id: 'LOWERCASE', name: 'LOWERCASE', customer: { name: 'pt' }, mqttTopics: {} },
   ];
   const data = new Map<string, Doc[]>([
+    ['Station._users', [{ username: 'pt.user', role: 'customer', customer: 'PT' }]],
     ['Station._stations', stations],
     ['Station._alerts', [
       ...Array.from({ length: 205 }, (_, i) => ({ id: `other-${i}`, stationId: 'OTHER-1', acknowledged: false })),
@@ -60,6 +61,7 @@ test('PTG only receives PT stations across lists, details, alerts, energy and st
             let rows = docs.filter(doc => matches(doc, query));
             const cursor = {
               sort: () => cursor,
+              maxTimeMS: () => cursor,
               limit: (count: number) => { rows = rows.slice(0, count); return cursor; },
               toArray: async () => structuredClone(rows),
             };
@@ -78,16 +80,17 @@ test('PTG only receives PT stations across lists, details, alerts, energy and st
     const { GET: alerts } = await import('../app/api/alerts/route');
     const { GET: energy } = await import('../app/api/energy/route');
     const { GET: peakHours } = await import('../app/api/statistics/peak-hours/route');
+    const { GET: vseccLogs } = await import('../app/api/vsecc-logs/route');
     const { invalidateStationsCache } = await import('../lib/stationsCache');
     const { invalidateFleetCache } = await import('../lib/fleetCache');
     invalidateStationsCache();
     invalidateFleetCache();
-    const viewerToken = await signToken('PTG');
-    const adminToken = await signToken(getExpectedCredentials().username);
+    const viewerToken = await signToken({ username: 'pt.user', role: 'customer' as const, customer: 'PT' });
+    const adminToken = await signToken({ username: getExpectedCredentials().username, role: 'admin' as const });
     const req = (path: string, token = viewerToken) => new NextRequest(`http://localhost${path}`, {
       headers: { Cookie: `${SESSION_COOKIE}=${token}` },
     });
-    // Populate shared caches as admin, then ensure PTG cannot reuse unrestricted results.
+    // Populate shared caches as admin, then ensure the customer cannot reuse unrestricted results.
     assert.equal((await (await list(req('/api/stations', adminToken))).json()).length, 4);
     assert.deepEqual((await (await list(req('/api/stations'))).json()).map((st: Doc) => st.id), ['PT-1']);
     assert.equal((await (await fleet(req('/api/fleet', adminToken))).json()).length, 4);
@@ -108,6 +111,13 @@ test('PTG only receives PT stations across lists, details, alerts, energy and st
     const dates = 'start=2026-10-12&end=2026-10-12';
     assert.equal((await energy(req(`/api/energy?stationId=OTHER-1&${dates}`))).status, 404);
     assert.equal((await (await energy(req(`/api/energy?stationId=PT-1&${dates}`))).json())[0].head1.totalKwh, 5);
+    // vSECC Manager Log: other customers' stations are invisible (404); own station passes the scope check
+    // (PT-1 is not a Vector station, so it then stops at the controller check → 400, never reaching the charger).
+    for (const id of ['OTHER-1', 'UNASSIGNED', 'LOWERCASE']) {
+      assert.equal((await vseccLogs(req(`/api/vsecc-logs?stationId=${id}`))).status, 404, id);
+    }
+    assert.equal((await vseccLogs(req('/api/vsecc-logs?stationId=PT-1'))).status, 400);
+    assert.equal((await vseccLogs(req('/api/vsecc-logs?stationId=OTHER-1', adminToken))).status, 400);
     const stats = await (await peakHours(req('/api/statistics/peak-hours?from=2026-10-12&to=2026-10-12'))).json();
     assert.equal(stats.totals.totalKwh, 10);
     assert.equal(stats.totals.stationCount, 1);
@@ -122,7 +132,7 @@ test('PTG only receives PT stations across lists, details, alerts, energy and st
     assert.equal((await (await peakHours(req('/api/statistics/peak-hours?from=2026-10-12&to=2026-10-12'))).json()).totals.totalKwh, 0);
     assert.equal((await energy(req(`/api/energy?stationId=PT-1&${dates}`))).status, 404);
     assert.equal((await list(new NextRequest('http://localhost/api/stations'))).status, 401);
-    assert.equal(canViewStation({ username: 'PTG', role: 'viewer', expiresAt: Infinity }, { customer: { name: 'PTG' } }), false);
+    assert.equal(canViewStation({ role: 'customer', customer: 'PT' }, { customer: { name: 'PTG' } }), false);
   } finally {
     globals.__mongoClient = previousClient;
   }

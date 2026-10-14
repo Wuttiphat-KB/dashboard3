@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import { WebSocket } from 'ws';
 import { getExpectedCredentials, signToken, SESSION_COOKIE } from '../lib/auth';
 
-test('realtime sockets authenticate and deliver only PT station messages to PTG', { timeout: 10000 }, async () => {
+test('realtime sockets authenticate and deliver only the customer\'s own station messages', { timeout: 10000 }, async () => {
   process.env.MONGO_URI = 'mongodb://localhost:27017/realtime-test';
   process.env.MQTT_URL = 'mqtt://localhost:1883';
   const { startWs, broadcast, sendTo } = await import('../server/ws');
@@ -29,8 +29,8 @@ test('realtime sockets authenticate and deliver only PT station messages to PTG'
     anonymous.on('error', () => {});
     anonymous.terminate();
 
-    const viewer = new WebSocket(url, { headers: { Cookie: `${SESSION_COOKIE}=${await signToken('PTG')}` } });
-    const admin = new WebSocket(url, { headers: { Cookie: `${SESSION_COOKIE}=${await signToken(getExpectedCredentials().username)}` } });
+    const viewer = new WebSocket(url, { headers: { Cookie: `${SESSION_COOKIE}=${await signToken({ username: 'pt.user', role: 'customer' as const, customer: 'PT' })}` } });
+    const admin = new WebSocket(url, { headers: { Cookie: `${SESSION_COOKIE}=${await signToken({ username: getExpectedCredentials().username, role: 'admin' as const })}` } });
     sockets.push(viewer, admin);
     await Promise.all([once(viewer, 'open'), once(admin, 'open')]);
     const received: string[] = [];

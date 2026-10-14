@@ -5,6 +5,7 @@ import { loadStations } from '@/lib/stationRepository';
 import { vseccBaseUrl, vseccGet, isSafeLogName, VseccError } from '@/lib/vsecc';
 import { isNetworkId, withStationNetwork, ZeroTierError } from '@/lib/zerotier';
 import { audit } from '@/lib/audit';
+import { canViewStation } from '@/lib/stationAccess';
 
 const MAX_TAIL_LINES = 5000;
 /** Bytes fetched from the end of a log for the viewer (enough for 5000 typical lines). */
@@ -31,13 +32,12 @@ function pickDefault(files: string[]): string {
  * GET /api/vsecc-logs?stationId=X&zip=1                    → all logs as zip (attachment)
  * Add &fresh=1 to bypass the server cache.
  *
- * Admin only: logs can contain charger internals and the endpoint reaches into
- * the charger's own API.
+ * Admins: any Vector station. Customers: only their own customer's stations
+ * (same rule as every other station API). Read-only — nothing here deletes logs.
  */
 export async function GET(req: NextRequest) {
   const session = await getRequestSession(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (session.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const url = new URL(req.url);
   const stationId = url.searchParams.get('stationId');
@@ -51,7 +51,8 @@ export async function GET(req: NextRequest) {
   try {
     const stations = await loadStations(await getMongoClient());
     const st = stations.find((s: any) => s.id === stationId || s.name === stationId);
-    if (!st) return NextResponse.json({ error: 'Station not found' }, { status: 404 });
+    // Out-of-scope stations look exactly like missing ones.
+    if (!st || !canViewStation(session, st)) return NextResponse.json({ error: 'Station not found' }, { status: 404 });
     if (st.controllerType !== 'vector') {
       return NextResponse.json({ error: 'Log Manager is only available for Vector stations' }, { status: 400 });
     }
@@ -175,7 +176,12 @@ export async function GET(req: NextRequest) {
     return await work();
   } catch (err: any) {
     const status = err instanceof VseccError || err instanceof ZeroTierError ? err.status : 500;
-    console.error(`[api/vsecc-logs] error after ${Date.now() - t0}ms:`, err?.message || err);
-    return NextResponse.json({ error: err?.message || 'Unknown error' }, { status });
+    console.error(`[api/vsecc-logs] error after ${Date.now() - t0}ms (${session.username}):`, err?.message || err);
+    // Admins get the real cause (network IDs, config names, route conflicts…); customers a plain message.
+    const message = session.role === 'admin'
+      ? err?.message || 'Unknown error'
+      : status === 504 || status === 502 ? 'Cannot reach the charger right now — please try again later.'
+      : 'Log is not available for this station right now.';
+    return NextResponse.json({ error: message }, { status });
   }
 }
