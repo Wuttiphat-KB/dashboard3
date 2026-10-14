@@ -94,6 +94,7 @@ async function login(base: string, key: string): Promise<string> {
 /** Authenticated GET; re-logs in once on 401. */
 export async function vseccGet(
   base: string, path: string, timeoutMs = 30_000, cacheKey = base, extraHeaders: Record<string, string> = {},
+  acceptStatuses: number[] = [],
 ): Promise<Response> {
   const key = `${cacheKey}|${base}`;
   let cached = tokens.get(key);
@@ -103,7 +104,7 @@ export async function vseccGet(
     const token = await login(base, key);
     res = await fetchWithTimeout(`${base}${path}`, { headers: { ...extraHeaders, Authorization: `Bearer ${token}` } }, timeoutMs);
   }
-  if (!res.ok) throw new VseccError(`vSECC ${path} returned HTTP ${res.status}`, res.status === 404 ? 404 : 502);
+  if (!res.ok && !acceptStatuses.includes(res.status)) throw new VseccError(`vSECC ${path} returned HTTP ${res.status}`, res.status === 404 ? 404 : 502);
   return res;
 }
 

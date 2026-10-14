@@ -13,6 +13,19 @@ interface LogView {
   lines: string[];
   partial?: boolean;
   timing?: { network: number; charger: number; bytes: number; cached: boolean; totalMs: number };
+  fetchedAt?: string | null;
+  collector?: {
+    running: boolean; intervalSec: number; retentionDays: number; stations: number; lastCycleMs: number | null;
+    lastRunAt: string | null; lastOkAt: string | null; lastError: string | null;
+  };
+}
+
+function ago(iso: string | null | undefined, now: number): string {
+  if (!iso) return 'never';
+  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s ago`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m ago`;
 }
 
 const TAIL_OPTIONS = [200, 500, 1000, 5000];
@@ -87,6 +100,33 @@ export default function VseccLogPanel({ stationId }: Props) {
 
   const refresh = () => { setFresh(true); setReloadKey(k => k + 1); };
 
+  // Auto-refresh: re-read the server's stored copy (collected in the background) — cheap, no charger round trip.
+  const [auto, setAuto] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
+  const preRef = useRef<HTMLPreElement>(null);
+  const stickBottom = useRef(true);
+  const pollSec = Math.max(10, view?.collector?.intervalSec || 30);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (!auto || !selected || !files) return;
+    let cancelled = false;
+    const t = setInterval(() => {
+      if (document.hidden) return;
+      apiJson(`${base}&name=${encodeURIComponent(selected)}&tail=${tail}`)
+        .then(j => { if (!cancelled && loadedFor.current === `${selected}|${tail}`) setView(j); })
+        .catch(() => { /* keep showing the last good view */ });
+    }, pollSec * 1000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [auto, base, selected, tail, files, pollSec]);
+  // Keep the view pinned to the newest line unless the user scrolled up.
+  useEffect(() => {
+    const el = preRef.current;
+    if (el && stickBottom.current) el.scrollTop = el.scrollHeight;
+  }, [view]);
+
   // Seconds counter shown next to the spinner while a request is in flight.
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -159,15 +199,39 @@ export default function VseccLogPanel({ stationId }: Props) {
             Errors / warnings only
           </label>
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-secondary)', paddingBottom: 6 }}
+            title="Re-read the log the server collects in the background">
+            <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} />
+            Auto {pollSec}s
+          </label>
+
           <button className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            onClick={refresh} disabled={viewLoading}>
+            onClick={refresh} disabled={viewLoading} title="Pull new lines from the charger now">
             {viewLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '↻'} Refresh
           </button>
           <a className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none', opacity: selected ? 1 : 0.5, pointerEvents: selected ? 'auto' : 'none' }}
-            href={`${base}&name=${encodeURIComponent(selected)}&download=1`}>⬇ File</a>
+            href={`${base}&name=${encodeURIComponent(selected)}&stored=1`}
+            title={`Everything stored on the server for this log (last ${view?.collector?.retentionDays ?? 7} days)`}>⬇ Stored</a>
+          <a className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none', opacity: selected ? 1 : 0.5, pointerEvents: selected ? 'auto' : 'none' }}
+            href={`${base}&name=${encodeURIComponent(selected)}&download=1`} title="Current file straight from the charger">⬇ Live file</a>
           <a className="btn btn-primary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none' }}
             href={`${base}&zip=1`}>⬇ All logs (zip)</a>
         </div>
+        {view?.collector && (
+          <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            <span title={view.collector.lastOkAt ? new Date(view.collector.lastOkAt).toLocaleString() : ''}>
+              ● Collected {ago(view.collector.lastOkAt, now)}
+            </span>
+            {view.collector.running && view.collector.lastCycleMs != null && (
+              <span>every ~{Math.max(view.collector.intervalSec, Math.round(view.collector.lastCycleMs / 1000))}s
+                {view.collector.stations > 1 ? ` (${view.collector.stations} Vector stations in rotation)` : ''}</span>
+            )}
+            {!view.collector.running && <span>background collector is off — showing what was stored</span>}
+            {view.collector.lastError && (
+              <span style={{ color: 'var(--warn-text)' }}>⚠ last attempt {ago(view.collector.lastRunAt, now)}: {view.collector.lastError}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -204,7 +268,9 @@ export default function VseccLogPanel({ stationId }: Props) {
               <span className="spinner spinner-lg" /> {elapsed}s
             </div>
           )}
-          <pre style={{
+          <pre ref={preRef}
+            onScroll={e => { const el = e.currentTarget; stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}
+            style={{
             margin: 0, padding: '0.75rem 1rem', maxHeight: 600, overflow: 'auto',
             fontSize: 11, lineHeight: 1.5, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
             background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', opacity: viewLoading ? 0.6 : 1,
