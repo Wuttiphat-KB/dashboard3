@@ -4,6 +4,7 @@ import { getRequestSession } from '@/lib/authorization';
 import { loadStations } from '@/lib/stationRepository';
 import { listUsers, createUser, UserError, MIN_PASSWORD_LENGTH } from '@/lib/users';
 import { getExpectedCredentials } from '@/lib/auth';
+import { listCustomers } from '@/lib/customers';
 import { audit } from '@/lib/audit';
 
 /**
@@ -16,14 +17,22 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (session.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   try {
-    const [users, stations] = await Promise.all([listUsers(), loadStations(await getMongoClient())]);
+    const [users, stations, registered] = await Promise.all([listUsers(), loadStations(await getMongoClient()), listCustomers()]);
     const counts = new Map<string, number>();
     for (const st of stations) {
       const name = st?.customer?.name?.trim();
       if (name) counts.set(name, (counts.get(name) || 0) + 1);
     }
-    const customers = [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([name, stationCount]) => ({ name, stationCount }));
+    const reg = new Map(registered.map(c => [c.name, c]));
+    const names = new Set([...counts.keys(), ...reg.keys()]);
+    const customers = [...names].sort((a, b) => a.localeCompare(b)).map(name => ({
+      name,
+      stationCount: counts.get(name) || 0,
+      userCount: users.filter(u => u.role === 'customer' && u.customer === name).length,
+      registered: reg.has(name),
+      createdAt: reg.get(name)?.createdAt,
+      createdBy: reg.get(name)?.createdBy,
+    }));
     return NextResponse.json({
       users, customers, minPasswordLength: MIN_PASSWORD_LENGTH,
       builtInAdmin: getExpectedCredentials().username,

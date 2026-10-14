@@ -12,7 +12,7 @@ import { verifyToken, SESSION_COOKIE } from './lib/auth';
  * permissions independently before changing data.
  */
 const ADMIN_PAGES = ['/config', '/settings', '/users', '/audit'];
-const ADMIN_APIS  = ['/api/users', '/api/audit', '/api/health'];
+const ADMIN_APIS  = ['/api/users', '/api/customers', '/api/audit', '/api/health'];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

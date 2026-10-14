@@ -16,7 +16,7 @@ interface User {
   lastLoginAt?: string;
 }
 
-interface Customer { name: string; stationCount: number }
+interface Customer { name: string; stationCount: number; userCount?: number; registered?: boolean; createdAt?: string; createdBy?: string }
 
 interface FormState {
   mode: 'create' | 'edit';
@@ -56,6 +56,10 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<'users' | 'customers'>('users');
+  const [newCustomer, setNewCustomer] = useState('');
+  const [custSaving, setCustSaving] = useState(false);
+  const [custError, setCustError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -83,7 +87,7 @@ export default function UsersPage() {
       const body: any = form.mode === 'create'
         ? { role: form.role }
         : { displayName: form.displayName, role: form.role, disabled: form.disabled };
-      if (form.role === 'customer') body.customer = form.customer;
+      if (form.mode === 'edit' && form.role === 'customer') body.customer = form.customer;
       if (form.password) body.password = form.password;
       const res = form.mode === 'create'
         ? await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, username: form.username }) })
@@ -116,6 +120,36 @@ export default function UsersPage() {
     load();
   }
 
+  async function addCustomer(nameRaw: string) {
+    const name = nameRaw.trim();
+    if (!name) return;
+    setCustSaving(true);
+    setCustError(null);
+    try {
+      const res = await fetch('/api/customers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+      setNewCustomer('');
+      load();
+    } catch (err: any) {
+      setCustError(err.message);
+    } finally {
+      setCustSaving(false);
+    }
+  }
+
+  async function removeCustomer(c: Customer) {
+    const used = c.stationCount || c.userCount
+      ? `\n\nStill used by ${c.stationCount} station(s) and ${c.userCount ?? 0} user(s) — they keep this name; it is only removed from the list.`
+      : '';
+    if (!window.confirm(`Remove customer "${c.name}" from the list?${used}`)) return;
+    setCustError(null);
+    const res = await fetch(`/api/customers/${encodeURIComponent(c.name)}`, { method: 'DELETE' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { setCustError(j?.error || `HTTP ${res.status}`); return; }
+    load();
+  }
+
   if (sessionLoading) return <div className="card" style={{ padding: '2rem', textAlign: 'center' }}><span className="spinner" /></div>;
   if (!isAdmin) return <div className="card">This page is available to administrators only.</div>;
 
@@ -130,11 +164,89 @@ export default function UsersPage() {
           <h1 className="section-title" style={{ fontSize: 18 }}>Users &amp; Roles</h1>
           <p className="section-subtitle">Accounts that can sign in to the dashboard, their role and which customer&apos;s stations they see</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setFormError(null); setForm({ ...EMPTY_FORM, customer: customers[0]?.name || '' }); }}>
-          + Add user
+        {tab === 'users' && (
+          <button className="btn btn-primary" onClick={() => { setFormError(null); setForm({ ...EMPTY_FORM }); }}>
+            + Add user
+          </button>
+        )}
+      </div>
+
+      <div className="tabs" style={{ marginBottom: '1rem' }}>
+        <button className={`tab ${tab === 'users' ? 'tab-active' : ''}`} onClick={() => setTab('users')}>
+          Users{users ? ` (${users.length + 1})` : ''}
+        </button>
+        <button className={`tab ${tab === 'customers' ? 'tab-active' : ''}`} onClick={() => setTab('customers')}>
+          Customers ({customers.length})
         </button>
       </div>
 
+      {error && (
+        <div className="card" style={{ padding: '0.875rem 1rem', borderColor: 'var(--error)', color: 'var(--error-text)', marginBottom: '1rem', fontSize: 12 }}>
+          {error}
+        </div>
+      )}
+
+      {tab === 'customers' && (
+        <div className="card">
+          <div className="card-header"><span className="card-title">Customers</span></div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 0.75rem' }}>
+            Add customer names here, then pick them in Station Config → Customer and when editing a Customer user.
+            The name must match exactly for a user to see that customer&apos;s stations.
+          </p>
+          <form onSubmit={e => { e.preventDefault(); addCustomer(newCustomer); }}
+            style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <input className="input" required maxLength={200} value={newCustomer} placeholder="Customer name"
+              onChange={e => setNewCustomer(e.target.value)} style={{ flex: '1 1 220px', maxWidth: 360 }} />
+            <button type="submit" className="btn btn-primary" disabled={custSaving || !newCustomer.trim()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {custSaving && <span className="spinner" style={{ width: 12, height: 12 }} />}
+              + Add customer
+            </button>
+          </form>
+          {custError && <div style={{ color: 'var(--error-text)', fontSize: 12, marginBottom: '0.75rem' }}>{custError}</div>}
+          {!users && !error && <div style={{ padding: '2rem', textAlign: 'center' }}><span className="spinner" /></div>}
+          {users && (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                    <th style={th}>Customer</th>
+                    <th style={th}>Stations</th>
+                    <th style={th}>Users</th>
+                    <th style={th}>Added</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customers.map(c => (
+                    <tr key={c.name} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={td}>{c.name}</td>
+                      <td style={td}>{c.stationCount}</td>
+                      <td style={td}>{c.userCount ?? 0}</td>
+                      <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                        {c.registered ? <>{fmtDate(c.createdAt)}{c.createdBy && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>by {c.createdBy}</div>}</>
+                          : <span style={{ fontSize: 11, color: 'var(--warn-text)' }}>Found on stations only</span>}
+                      </td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {c.registered
+                          ? <button className="btn btn-danger btn-sm" onClick={() => removeCustomer(c)}>Remove</button>
+                          : <button className="btn btn-secondary btn-sm" disabled={custSaving} onClick={() => addCustomer(c.name)}>Add to list</button>}
+                      </td>
+                    </tr>
+                  ))}
+                  {customers.length === 0 && (
+                    <tr><td colSpan={5} style={{ ...td, textAlign: 'center', color: 'var(--text-muted)', padding: '1.5rem' }}>
+                      No customers yet — add one above.
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'users' && (<>
       {/* Role permission matrix */}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="card-header"><span className="card-title">Role permissions</span></div>
@@ -161,12 +273,6 @@ export default function UsersPage() {
           </table>
         </div>
       </div>
-
-      {error && (
-        <div className="card" style={{ padding: '0.875rem 1rem', borderColor: 'var(--error)', color: 'var(--error-text)', marginBottom: '1rem', fontSize: 12 }}>
-          {error}
-        </div>
-      )}
 
       {/* Users table */}
       <div className="card">
@@ -214,10 +320,10 @@ export default function UsersPage() {
                     <td style={td}>
                       {u.role === 'admin' ? <span style={{ color: 'var(--text-muted)' }}>All stations</span> : (
                         <>
-                          {u.customer}
-                          <div style={{ fontSize: 10, color: stationCount(u.customer) ? 'var(--text-muted)' : 'var(--warn-text)' }}>
+                          {u.customer || <span style={{ color: 'var(--warn-text)' }}>Not assigned</span>}
+                          {u.customer && <div style={{ fontSize: 10, color: stationCount(u.customer) ? 'var(--text-muted)' : 'var(--warn-text)' }}>
                             {stationCount(u.customer)} station{stationCount(u.customer) === 1 ? '' : 's'}
-                          </div>
+                          </div>}
                         </>
                       )}
                     </td>
@@ -227,7 +333,7 @@ export default function UsersPage() {
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button className="btn btn-secondary btn-sm" onClick={() => {
                         setFormError(null);
-                        setForm({ mode: 'edit', username: u.username, displayName: u.displayName || '', role: u.role, customer: u.customer || customers[0]?.name || '', password: '', disabled: !!u.disabled });
+                        setForm({ mode: 'edit', username: u.username, displayName: u.displayName || '', role: u.role, customer: u.customer || '', password: '', disabled: !!u.disabled });
                       }}>Edit</button>{' '}
                       {u.username !== me && (
                         <>
@@ -248,6 +354,8 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      </>)}
 
       {/* Create / edit dialog */}
       {form && (
@@ -289,10 +397,10 @@ export default function UsersPage() {
               </select>
             </div>
 
-            {form.role === 'customer' && (
+            {form.mode === 'edit' && form.role === 'customer' && (
               <div>
-                <label className="input-label">Customer</label>
-                <input className="input" required list="customer-names" value={form.customer}
+                <label className="input-label">Customer (optional)</label>
+                <input className="input" list="customer-names" value={form.customer}
                   onChange={e => setForm({ ...form, customer: e.target.value })} placeholder="Customer name as set on stations" />
                 <datalist id="customer-names">
                   {customers.map(c => <option key={c.name} value={c.name}>{`${c.stationCount} stations`}</option>)}
@@ -300,7 +408,7 @@ export default function UsersPage() {
                 <div style={{ fontSize: 10, color: stationCount(form.customer) ? 'var(--text-muted)' : 'var(--warn-text)', marginTop: 3 }}>
                   {form.customer
                     ? `${stationCount(form.customer)} station(s) have Customer = "${form.customer}" in Station Config (exact match)`
-                    : 'Pick the customer name used on stations in Station Config'}
+                    : 'Not assigned — this user sees no stations until a customer is set'}
                 </div>
               </div>
             )}

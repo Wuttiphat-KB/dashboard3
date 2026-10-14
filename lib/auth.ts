@@ -181,7 +181,6 @@ export async function verifyToken(token: string | undefined | null): Promise<Ver
     const customer = typeof d?.c === 'string' && d.c.trim() ? d.c.trim() : undefined;
     if (!username || !ACCOUNT_ROLES.includes(role)) return null;
     if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) return null;
-    if (role === 'customer' && !customer) return null;
     return { username, expiresAt, role, ...(customer ? { customer } : {}) };
   } catch {
     return null;

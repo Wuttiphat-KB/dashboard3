@@ -137,6 +137,15 @@ function ConfigPageInner() {
     if (!stationsLoading) setStations(fetchedStations);
   }, [fetchedStations, stationsLoading]);
 
+  // Customer names registered on Users & Roles → Customers (suggestions for the Customer field).
+  const [customerNames, setCustomerNames] = useState<string[]>([]);
+  useEffect(() => {
+    fetch('/api/customers', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : { customers: [] }))
+      .then(j => setCustomerNames((j.customers || []).map((c: { name: string }) => c.name)))
+      .catch(() => {});
+  }, []);
+
   const goToList = () => {
     setMode('list');
     if (editId) router.replace('/config');  // clear ?edit= from URL
@@ -480,9 +489,16 @@ function ConfigPageInner() {
             <div>
               <label className="input-label" htmlFor="customer-name">Customer</label>
               <input id="customer-name" className="input" type="text" maxLength={200}
+                list="customer-name-options"
                 placeholder="ชื่อลูกค้า"
                 value={form.customer?.name ?? ''}
                 onChange={e => setForm(f => ({ ...f, customer: { ...f.customer, name: e.target.value } }))} />
+              <datalist id="customer-name-options">
+                {customerNames.map(n => <option key={n} value={n} />)}
+              </datalist>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
+                เลือกจากรายชื่อใน Users &amp; Roles → Customers
+              </div>
             </div>
             <InputRow label="Location" value={form.location} onChange={v => setForm(f => ({ ...f, location: v }))} placeholder="e.g. Bangkok – Siam Paragon" mono={false} />
             <div>
