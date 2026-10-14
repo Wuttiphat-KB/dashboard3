@@ -353,6 +353,86 @@ export default function VseccLogPanel({ stationId }: Props) {
           </div>
         )}
       </div>
+
+      {isAdmin && <CollectorStatusTable now={now} />}
+    </div>
+  );
+}
+
+interface StatusRow { id: string; name: string; configured: boolean; lastRunAt: string | null; lastOkAt: string | null; lastError: string | null; nextTryAt: string | null; vseccs: string[] }
+
+/** Admin-only: every Vector station's collection status, to see at a glance which cabinets are being stored. */
+function CollectorStatusTable({ now }: { now: number }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<{ collector: any; rows: StatusRow[] } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const load = () => apiJson('/api/vsecc-logs/status')
+      .then(j => { if (!cancelled) { setData(j); setErr(null); } })
+      .catch(e => { if (!cancelled) setErr(e.message); });
+    load();
+    const t = setInterval(load, 15_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [open]);
+
+  const rows = [...(data?.rows || [])].sort((a, b) =>
+    Number(!!a.lastError) - Number(!!b.lastError) || (b.lastOkAt || '').localeCompare(a.lastOkAt || '') || a.name.localeCompare(b.name));
+  const okCount = rows.filter(r => r.lastOkAt && !r.lastError).length;
+  const never = rows.filter(r => !r.lastRunAt).length;
+  const c = data?.collector;
+  const cell = { padding: '4px 8px', borderBottom: '1px solid var(--border)', fontSize: 11, verticalAlign: 'top' as const };
+
+  return (
+    <div className="card">
+      <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
+        <span className="card-title">{open ? '▾' : '▸'} Log collection — all Vector stations</span>
+        {data && (
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+            {okCount} collecting · {rows.length - okCount - never} unreachable · {never} not visited yet
+            {c?.current ? ` · now: ${c.current}` : ''}
+            {c?.lastCycleMs != null ? ` · last round ${Math.round(c.lastCycleMs / 1000)} s` : ' · first round in progress'}
+          </span>
+        )}
+      </div>
+      {open && (
+        <div style={{ padding: '0.5rem 1rem 1rem' }}>
+          {err && <div style={{ color: 'var(--warn-text)', fontSize: 11 }}>⚠ {err}</div>}
+          {c && (
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
+              {c.running ? 'Collector running' : 'Collector not running in this process'} · stored in <code>{c.logDir}</code>
+            </div>
+          )}
+          <div style={{ maxHeight: 420, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase' }}>
+                  <th style={cell}>Station</th><th style={cell}>Status</th><th style={cell}>vSECC</th><th style={cell}>Last collected</th><th style={cell}>Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => {
+                  const status = !r.configured ? 'no ZeroTier / URL' : !r.lastRunAt ? 'waiting' : r.lastError ? 'unreachable' : 'OK';
+                  const color = status === 'OK' ? 'var(--ok-text)' : status === 'unreachable' ? 'var(--warn-text)' : 'var(--text-muted)';
+                  return (
+                    <tr key={r.id}>
+                      <td style={cell}><a href={`/station/${encodeURIComponent(r.id)}`} style={{ color: 'var(--text-primary)' }}>{r.name}</a></td>
+                      <td style={{ ...cell, color, whiteSpace: 'nowrap' }}>● {status}</td>
+                      <td style={cell}>{r.vseccs.join(', ') || '—'}</td>
+                      <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.lastOkAt ? ago(r.lastOkAt, now) : 'never'}</td>
+                      <td style={{ ...cell, color: 'var(--text-secondary)' }}>
+                        {r.lastError || ''}
+                        {r.nextTryAt && new Date(r.nextTryAt).getTime() > now ? ` (retry in ${Math.ceil((new Date(r.nextTryAt).getTime() - now) / 60_000)} min)` : ''}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

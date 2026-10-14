@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
     let state = await storedState(sid);
     let pulled = false;
     if (fresh) {
-      state = await collectStation(st, stations);           // ↻ Refresh: user asked to wait
+      state = await collectStation(st, stations, { force: true });   // ↻ Refresh: user asked to wait; try even if ZeroTier says offline
       pulled = true;
     } else if (!state) {
       // Never collected yet: start in the background and answer now; the panel's auto-refresh picks it up.

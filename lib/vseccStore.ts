@@ -37,7 +37,7 @@ import os from 'os';
 import { getMongoClient } from './mongoClient';
 import { loadStations } from './stationRepository';
 import { vseccBaseCandidates, vseccGet, vseccConfigured, isSafeLogName, VseccError } from './vsecc';
-import { isNetworkId, withStationNetwork } from './zerotier';
+import { isNetworkId, withStationNetwork, cabinetOnline } from './zerotier';
 
 const SEED_BYTES   = 1_500_000;   // first contact / after rotation: keep only the end of the file
 const MAX_CHUNK    = 5_000_000;   // catch-up per visit; the rest comes on the next visit
@@ -316,7 +316,7 @@ async function holdCollectorLock(): Promise<boolean> {
  * the same station share one run. `allStations` is needed to know which
  * ZeroTier networks belong to stations (only those are left when switching).
  */
-export function collectStation(st: any, allStations: any[], opts: { probeAll?: boolean } = {}): Promise<StationState> {
+export function collectStation(st: any, allStations: any[], opts: { probeAll?: boolean; force?: boolean } = {}): Promise<StationState> {
   const id = String(st.id);
   const running = inFlight.get(id);
   if (running) return running;
@@ -326,6 +326,14 @@ export function collectStation(st: any, allStations: any[], opts: { probeAll?: b
     state.lastRunAt = new Date().toISOString();
     try {
       await ensureRoot();
+      // Cabinet router not seen in ZeroTier for 10+ min → offline; skip without joining (saves ~30 s per station).
+      if (!opts.force && !st.vseccApiUrl && isNetworkId(st.zerotierIp)) {
+        const c = await cabinetOnline(st.zerotierIp);
+        if (c.online === false) {
+          const mins = Math.round((Date.now() - (c.lastSeen || 0)) / 60_000);
+          throw new VseccError(`Cabinet offline — its ZeroTier network has had no device online for ${mins >= 1440 ? `${Math.round(mins / 1440)} days` : mins >= 60 ? `${Math.round(mins / 60)} h` : `${mins} min`}`, 504);
+        }
+      }
       const candidates = vseccBaseCandidates(st);
       // Drop controllers whose address is no longer a candidate (station config changed); keep their files on disk.
       const knownKeys = Object.keys(state.controllers).filter(k => candidates.includes(state.controllers[k].baseUrl));
@@ -423,16 +431,17 @@ export function startVseccCollector(): void {
         const all = await loadStations(await getMongoClient());
         const vector = all.filter((s: any) => s.controllerType === 'vector' && (s.vseccApiUrl || s.zerotierIp));
         loopStatus.stations = vector.length;
-        let offline = 0;
+        let offline = 0, ok = 0;
         for (const st of vector) {
           // Offline chargers are retried on a back-off (2 → 30 min) so they don't slow down the others.
           if (inBackoff(await readState(String(st.id)))) { offline++; continue; }
           if (!(await holdCollectorLock())) break;        // refresh our claim; stop if another process took over
           loopStatus.current = String(st.id);
           const r = await collectStation(st, all).catch(() => null);
-          if (r?.lastError) offline++;
+          if (r?.lastError) offline++; else if (r) ok++;
         }
         loopStatus.offline = offline;
+        console.log(`[vsecc-collector] round done in ${Math.round((Date.now() - t0) / 1000)} s — ${ok} ok, ${offline} offline/unreachable, ${vector.length} Vector stations`);
       } catch (err: any) {
         console.warn('[vsecc-collector] cycle failed:', err?.message || err);
       }
@@ -564,4 +573,23 @@ export async function storedZipEntries(id: string, onlyKey?: string | null): Pro
     }
   }
   return out;
+}
+
+/** One row per Vector station for the admin status table. */
+export async function collectorOverview(stations: any[]) {
+  const rows = [];
+  for (const st of stations.filter((s: any) => s.controllerType === 'vector')) {
+    const state = await readState(String(st.id));
+    rows.push({
+      id: String(st.id),
+      name: st.displayName || st.name || String(st.id),
+      configured: !!(st.vseccApiUrl || st.zerotierIp),
+      lastRunAt: state?.lastRunAt || null,
+      lastOkAt: state?.lastOkAt || null,
+      lastError: state?.lastError || null,
+      nextTryAt: state?.lastError ? state?.nextTryAt || null : null,
+      vseccs: Object.entries(state?.controllers || {}).filter(([, c]) => c.lastOkAt).map(([k]) => k),
+    });
+  }
+  return { collector: { ...collectorStatus(), logDir: logRoot() }, rows };
 }
