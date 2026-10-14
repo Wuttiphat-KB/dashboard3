@@ -3,17 +3,23 @@
  *
  * A background loop (started from instrumentation.ts) walks every Vector
  * station, pulls only the NEW bytes of each vSECC log file (HTTP Range) and
- * appends them to a per-day file on disk:
+ * appends them to a per-day file on disk. A cabinet can have one vSECC (at .11
+ * or .12) or two (both), so everything is kept per vSECC ("controller"):
  *
- *   <VSECC_LOG_DIR>/<stationId>/<YYYY-MM-DD>/<logname>     appended lines
- *   <VSECC_LOG_DIR>/<stationId>/_state.json                 offsets + status
+ *   <VSECC_LOG_DIR>/<stationId>/<controller>/<YYYY-MM-DD>/<logname>   appended lines
+ *   <VSECC_LOG_DIR>/<stationId>/_state.json                            offsets + status
  *
- * The Manager Log tab then reads from disk, so it opens instantly.
+ * <controller> is the vSECC address, e.g. "192.168.3.11".
+ * The Manager Log tab reads from disk, so it opens instantly.
  *
  * Stations behind a ZeroTier *network ID* share one LAN address, so the server
  * can only be on one of them at a time (lib/zerotier.ts). The loop therefore
  * visits stations one by one; each station is refreshed every
  * max(VSECC_COLLECT_INTERVAL_SEC, time to visit all stations).
+ *
+ * Which vSECCs a cabinet has is discovered by trying every LAN address; ones
+ * that answered are visited every time, the others are re-probed every
+ * VSECC_PROBE_MINUTES (a second vSECC added later is picked up on its own).
  *
  * .env.local:
  *   VSECC_COLLECTOR=0               disable the background loop (default: on when VSECC_USERNAME is set)
@@ -21,6 +27,8 @@
  *   VSECC_LOG_DIR=…                 default <project>/data/vsecc-logs
  *   VSECC_LOG_RETENTION_DAYS=7      day folders older than this are deleted
  *   VSECC_COLLECT_FILES=<regex>     only collect log names matching this (default: all)
+ *   VSECC_OFFLINE_MAX_MIN=30        longest wait before retrying an offline station
+ *   VSECC_PROBE_MINUTES=30          how often addresses that never answered are tried again
  */
 
 import { promises as fs, createReadStream } from 'fs';
@@ -36,9 +44,11 @@ const MAX_CHUNK    = 5_000_000;   // catch-up per visit; the rest comes on the n
 const OVERLAP      = 256;         // bytes re-read before the offset to detect rotation
 const READ_BYTES   = 1_500_000;   // per day-file, when building the viewer tail
 
-const intervalMs  = () => Math.max(5, Number(process.env.VSECC_COLLECT_INTERVAL_SEC) || 30) * 1000;
+const intervalMs    = () => Math.max(5, Number(process.env.VSECC_COLLECT_INTERVAL_SEC) || 30) * 1000;
 const retentionDays = () => Math.max(1, Number(process.env.VSECC_LOG_RETENTION_DAYS) || 7);
+const probeMs       = () => Math.max(1, Number(process.env.VSECC_PROBE_MINUTES) || 30) * 60_000;
 
+// ── Folders ──────────────────────────────────────────────────────────────
 function configuredRoot(): string {
   return process.env.VSECC_LOG_DIR || path.join(/*turbopackIgnore: true*/ process.cwd(), 'data', 'vsecc-logs');
 }
@@ -70,9 +80,19 @@ async function ensureRoot(): Promise<string> {
   }
   throw new Error('No writable folder for vSECC logs — set VSECC_LOG_DIR in .env.local');
 }
+
 export const safeStationId = (id: string) => String(id).replace(/[^\w.\-]/g, '_');
 const stationDir = (id: string) => path.join(logRoot(), safeStationId(id));
+const ctrlDir = (id: string, key: string) => path.join(stationDir(id), key);
 const isDayDir = (n: string) => /^\d{4}-\d{2}-\d{2}$/.test(n);
+const isCtrlKey = (k: string) => /^[\w.\-]{1,100}$/.test(k) && !isDayDir(k) && !k.startsWith('_');
+
+/** Folder name for a vSECC address: "http://192.168.3.12/api" → "192.168.3.12". */
+export function controllerKey(baseUrl: string): string {
+  let host = baseUrl;
+  try { host = new URL(baseUrl).host; } catch { /* keep raw */ }
+  return host.replace(/[^\w.\-]/g, '_') || 'vsecc';
+}
 
 function today(): string {
   const d = new Date();   // server local time (Asia/Bangkok on the dashboard host)
@@ -81,22 +101,49 @@ function today(): string {
 
 // ── State ────────────────────────────────────────────────────────────────
 interface FileState { offset: number; tail: string /* base64 of bytes just before offset */ }
-export interface StationState {
+export interface ControllerState {
+  baseUrl: string;
   files: Record<string, FileState>;
   remoteFiles?: string[];
-  lastRunAt?: string;
-  lastOkAt?: string;
+  lastOkAt?: string | null;
   lastError?: string | null;
+}
+export interface StationState {
+  controllers: Record<string, ControllerState>;
+  lastRunAt?: string;
+  lastOkAt?: string | null;       // last visit where at least one vSECC answered
+  lastError?: string | null;      // set when NO vSECC answered on the last visit
   lastDurationMs?: number;
-  baseUrl?: string | null;      // vSECC address that answered last time (.11 or .12)
-  failCount?: number;           // consecutive failed visits
-  nextTryAt?: string | null;    // background loop skips the station until then (offline back-off)
+  lastProbeAt?: string | null;    // last time every LAN address was tried
+  failCount?: number;             // consecutive visits where nothing answered
+  nextTryAt?: string | null;      // background loop skips the station until then (offline back-off)
 }
 
 async function readState(id: string): Promise<StationState | null> {
-  try { return JSON.parse(await fs.readFile(path.join(stationDir(id), '_state.json'), 'utf8')); }
+  let raw: any;
+  try { raw = JSON.parse(await fs.readFile(path.join(stationDir(id), '_state.json'), 'utf8')); }
   catch { return null; }
+  if (!raw.controllers) raw = await migrateLegacy(id, raw);
+  return raw as StationState;
 }
+
+/** Older layout kept one vSECC per station directly under <station>/<day>. Move it under its controller. */
+async function migrateLegacy(id: string, old: any): Promise<StationState> {
+  const st: StationState = {
+    controllers: {}, lastRunAt: old.lastRunAt, lastOkAt: old.lastOkAt ?? null, lastError: old.lastError ?? null,
+    failCount: old.failCount || 0, nextTryAt: old.nextTryAt ?? null,
+  };
+  if (old.baseUrl) {
+    const key = controllerKey(old.baseUrl);
+    st.controllers[key] = { baseUrl: old.baseUrl, files: old.files || {}, remoteFiles: old.remoteFiles, lastOkAt: old.lastOkAt ?? null, lastError: null };
+    for (const d of (await fs.readdir(stationDir(id)).catch(() => [] as string[])).filter(isDayDir)) {
+      await fs.mkdir(ctrlDir(id, key), { recursive: true }).catch(() => {});
+      await fs.rename(path.join(stationDir(id), d), path.join(ctrlDir(id, key), d)).catch(() => {});
+    }
+  }
+  return st;
+}
+
 async function writeState(id: string, st: StationState): Promise<void> {
   await ensureRoot();
   const dir = stationDir(id);
@@ -114,8 +161,8 @@ function contentRangeStart(res: Response): number {
   return m ? Number(m[1]) : 0;
 }
 
-/** Returns the new state for the file and how many bytes were stored. */
-async function pullFile(get: Getter, id: string, name: string, prev: FileState | undefined): Promise<{ st: FileState; stored: number }> {
+/** Returns the new state for the file and how many bytes were stored under `dirOut`. */
+async function pullFile(get: Getter, dirOut: string, name: string, prev: FileState | undefined): Promise<{ st: FileState; stored: number }> {
   const p = `/logging/files/${encodeURIComponent(name)}`;
   let data: Buffer;            // bytes to consider storing
   let dataStart: number;       // remote offset of data[0]
@@ -165,7 +212,7 @@ async function pullFile(get: Getter, id: string, name: string, prev: FileState |
   const last = data.lastIndexOf(10);
   const commit = last < 0 ? Buffer.alloc(0) : data.subarray(0, last + 1);
   if (commit.length) {
-    const dir = path.join(stationDir(id), today());
+    const dir = path.join(dirOut, today());
     await fs.mkdir(dir, { recursive: true });
     await fs.appendFile(path.join(dir, name), commit);
   }
@@ -176,7 +223,7 @@ async function pullFile(get: Getter, id: string, name: string, prev: FileState |
   };
 }
 
-// ── Pull one station ─────────────────────────────────────────────────────
+// ── Station access ───────────────────────────────────────────────────────
 const g = globalThis as any;
 const inFlight: Map<string, Promise<StationState>> = g.__vseccCollectInFlight ??= new Map();
 
@@ -193,18 +240,29 @@ function backoffMs(fails: number): number {
 }
 
 const isNetErr = (err: any) => err instanceof VseccError && (err.status === 502 || err.status === 504);
+const shortAddr = (base: string) => base.replace(/^https?:\/\//, '').replace(/\/api$/, '');
+
+/** Run `fn` inside the station's ZeroTier network when it has one. */
+function inStationNetwork<T>(st: any, allStations: any[], fn: () => Promise<T>): Promise<T> {
+  return !st.vseccApiUrl && isNetworkId(st.zerotierIp)
+    ? withStationNetwork(st.zerotierIp.trim(), allStations.map((s: any) => s.zerotierIp).filter(isNetworkId), fn)
+    : fn();
+}
 
 /**
- * Run `fn(base)` against the station's vSECC: joins its ZeroTier network if
- * needed, then tries each candidate address (.11 / .12 …), the one that worked
- * last time first. Returns the result and the address that answered.
+ * Run `fn(base)` against one of the station's vSECCs (live download / zip).
+ * `controller` picks a specific vSECC; otherwise known vSECCs are tried first, then the other addresses.
  */
 export async function withStationVsecc<T>(
-  st: any, allStations: any[], fn: (base: string) => Promise<T>, preferred?: string | null,
+  st: any, allStations: any[], fn: (base: string) => Promise<T>, controller?: string | null,
 ): Promise<{ result: T; base: string }> {
-  const known = preferred ?? (await readState(String(st.id)))?.baseUrl ?? null;
-  const candidates = vseccBaseCandidates(st, known);
-  const tryAll = async () => {
+  const state = await readState(String(st.id));
+  const known = Object.values(state?.controllers || {});
+  const wanted = controller ? state?.controllers[controller]?.baseUrl : null;
+  const candidates = wanted
+    ? [wanted]
+    : [...new Set([...known.filter(c => c.lastOkAt).map(c => c.baseUrl), ...vseccBaseCandidates(st)])];
+  return inStationNetwork(st, allStations, async () => {
     let lastErr: any;
     for (const base of candidates) {
       try { return { result: await fn(base), base }; }
@@ -213,14 +271,11 @@ export async function withStationVsecc<T>(
         if (!isNetErr(err)) throw err;                 // reachable but failed (auth, 404…) → no point trying others
       }
     }
-    if (candidates.length > 1 && lastErr instanceof VseccError) {
-      throw new VseccError(`Charger offline or unreachable — no vSECC answered at ${candidates.map(c => c.replace(/^https?:\/\//, '').replace(/\/api$/, '')).join(' / ')} (${lastErr.message})`, lastErr.status);
+    if (lastErr instanceof VseccError) {
+      throw new VseccError(`Charger offline or unreachable — no vSECC answered at ${candidates.map(shortAddr).join(' / ')} (${lastErr.message})`, lastErr.status);
     }
     throw lastErr;
-  };
-  return !st.vseccApiUrl && isNetworkId(st.zerotierIp)
-    ? withStationNetwork(st.zerotierIp.trim(), allStations.map((s: any) => s.zerotierIp).filter(isNetworkId), tryAll)
-    : tryAll();
+  });
 }
 
 /** True while an offline station is waiting out its back-off. */
@@ -229,38 +284,65 @@ export function inBackoff(state: StationState | null): boolean {
 }
 
 /**
- * Pull new log bytes for one station now. Concurrent calls for the same
- * station share one run. `allStations` is needed to know which ZeroTier
- * networks belong to stations (only those are left when switching).
+ * Pull new log bytes for every vSECC of one station now. Concurrent calls for
+ * the same station share one run. `allStations` is needed to know which
+ * ZeroTier networks belong to stations (only those are left when switching).
  */
-export function collectStation(st: any, allStations: any[]): Promise<StationState> {
+export function collectStation(st: any, allStations: any[], opts: { probeAll?: boolean } = {}): Promise<StationState> {
   const id = String(st.id);
   const running = inFlight.get(id);
   if (running) return running;
   const run = (async () => {
-    const state: StationState = (await readState(id)) || { files: {} };
+    const state: StationState = (await readState(id)) || { controllers: {} };
     const t0 = Date.now();
     state.lastRunAt = new Date().toISOString();
     try {
       await ensureRoot();
-      const { result: stored, base } = await withStationVsecc(st, allStations, async base => {
-        // Known-good address: allow a slow first answer; probing the other address: give up sooner.
-        const loginMs = base === state.baseUrl || !state.baseUrl ? 20_000 : 10_000;
-        const get: Getter = (p, ms, h, accept) => vseccGet(base, p, ms, id, h, accept, loginMs);
-        const list = await (await get('/logging/filenames', 15_000, {}, [])).json();
-        const want = fileFilter();
-        const files: string[] = (Array.isArray(list) ? list : []).filter((n: any) => typeof n === 'string' && isSafeLogName(n));
-        state.remoteFiles = files;
-        let bytes = 0;
-        for (const name of files.filter(want)) {
-          const r = await pullFile(get, id, name, state.files[name]);
-          state.files[name] = r.st;
-          bytes += r.stored;
+      const candidates = vseccBaseCandidates(st);
+      // Drop controllers whose address is no longer a candidate (station config changed); keep their files on disk.
+      const knownKeys = Object.keys(state.controllers).filter(k => candidates.includes(state.controllers[k].baseUrl));
+      const probeDue = opts.probeAll || knownKeys.length === 0
+        || !state.lastProbeAt || Date.now() - new Date(state.lastProbeAt).getTime() > probeMs();
+      const targets = probeDue ? candidates : knownKeys.map(k => state.controllers[k].baseUrl);
+
+      const { okCount, stored, errors } = await inStationNetwork(st, allStations, async () => {
+        let okCount = 0, stored = 0;
+        const errors: string[] = [];
+        for (const base of targets) {
+          const key = controllerKey(base);
+          const known = !!state.controllers[key];
+          // Known vSECC: allow a slow first answer. Probing an address that may not exist: give up sooner.
+          const loginMs = known ? 20_000 : 8_000;
+          const get: Getter = (p, ms, h, accept) => vseccGet(base, p, ms, `${id}|${key}`, h, accept, loginMs);
+          try {
+            const list = await (await get('/logging/filenames', 15_000, {}, [])).json();
+            const ctrl: ControllerState = state.controllers[key] ||= { baseUrl: base, files: {} };
+            const files: string[] = (Array.isArray(list) ? list : []).filter((n: any) => typeof n === 'string' && isSafeLogName(n));
+            ctrl.remoteFiles = files;
+            const want = fileFilter();
+            for (const name of files.filter(want)) {
+              const r = await pullFile(get, ctrlDir(id, key), name, ctrl.files[name]);
+              ctrl.files[name] = r.st;
+              stored += r.stored;
+            }
+            if (!known) console.log(`[vsecc-collector] ${id}: found vSECC at ${shortAddr(base)}`);
+            ctrl.lastOkAt = new Date().toISOString();
+            ctrl.lastError = null;
+            okCount++;
+          } catch (err: any) {
+            const msg = err?.message || String(err);
+            errors.push(`${shortAddr(base)}: ${msg}`);
+            // Remember the failure on vSECCs we know about; a probe of a non-existent address is not an error.
+            if (state.controllers[key]) state.controllers[key].lastError = msg;
+            else if (!isNetErr(err)) state.controllers[key] = { baseUrl: base, files: {}, lastOkAt: null, lastError: msg };
+          }
         }
-        return bytes;
-      }, state.baseUrl);
-      if (state.baseUrl && state.baseUrl !== base) console.log(`[vsecc-collector] ${id}: vSECC found at ${base} (was ${state.baseUrl})`);
-      state.baseUrl = base;
+        return { okCount, stored, errors };
+      });
+      if (probeDue) state.lastProbeAt = new Date().toISOString();
+      if (okCount === 0) {
+        throw new VseccError(`Charger offline or unreachable — no vSECC answered (${errors.join('; ')})`);
+      }
       state.lastOkAt = new Date().toISOString();
       state.lastError = null;
       state.failCount = 0;
@@ -334,13 +416,16 @@ export async function pruneOld(): Promise<void> {
   const keep = new Date();
   keep.setDate(keep.getDate() - retentionDays() + 1);
   const cutoff = `${keep.getFullYear()}-${String(keep.getMonth() + 1).padStart(2, '0')}-${String(keep.getDate()).padStart(2, '0')}`;
-  const stations = await fs.readdir(logRoot()).catch(() => [] as string[]);
-  for (const s of stations) {
-    const days = await fs.readdir(path.join(logRoot(), s)).catch(() => [] as string[]);
-    for (const d of days) {
-      if (isDayDir(d) && d < cutoff) {
-        await fs.rm(path.join(logRoot(), s, d), { recursive: true, force: true });
-        console.log(`[vsecc-collector] pruned ${s}/${d}`);
+  const ls = (p: string) => fs.readdir(p).catch(() => [] as string[]);
+  for (const s of await ls(logRoot())) {
+    for (const c of await ls(path.join(logRoot(), s))) {
+      const dirs = isDayDir(c) ? [path.join(logRoot(), s, c)]                        // legacy layout
+        : (await ls(path.join(logRoot(), s, c))).filter(isDayDir).map(d => path.join(logRoot(), s, c, d));
+      for (const d of dirs) {
+        if (path.basename(d) < cutoff) {
+          await fs.rm(d, { recursive: true, force: true });
+          console.log(`[vsecc-collector] pruned ${path.relative(logRoot(), d)}`);
+        }
       }
     }
   }
@@ -351,15 +436,33 @@ export async function storedState(id: string): Promise<StationState | null> {
   return readState(id);
 }
 
-async function dayDirs(id: string): Promise<string[]> {
-  return (await fs.readdir(stationDir(id)).catch(() => [] as string[])).filter(isDayDir).sort();
+export interface ControllerInfo { key: string; label: string; lastOkAt: string | null; lastError: string | null }
+
+/** vSECCs known for a station (answered at least once, or have stored logs), sorted by address. */
+export async function storedControllers(id: string): Promise<ControllerInfo[]> {
+  const state = await readState(id);
+  const keys = new Set(Object.entries(state?.controllers || {}).filter(([, c]) => c.lastOkAt).map(([k]) => k));
+  for (const k of await fs.readdir(stationDir(id)).catch(() => [] as string[])) {
+    if (isCtrlKey(k) && await fs.stat(ctrlDir(id, k)).then(s => s.isDirectory()).catch(() => false)) keys.add(k);
+  }
+  return [...keys].sort().map(k => ({
+    key: k,
+    label: k,
+    lastOkAt: state?.controllers[k]?.lastOkAt ?? null,
+    lastError: state?.controllers[k]?.lastError ?? null,
+  }));
 }
 
-/** Log names known for a station: what the charger listed last time + what is on disk. */
-export async function storedFileNames(id: string): Promise<string[]> {
-  const names = new Set<string>((await readState(id))?.remoteFiles || []);
-  for (const d of await dayDirs(id)) {
-    for (const f of await fs.readdir(path.join(stationDir(id), d)).catch(() => [] as string[])) names.add(f);
+async function dayDirs(id: string, key: string): Promise<string[]> {
+  if (!isCtrlKey(key)) return [];
+  return (await fs.readdir(ctrlDir(id, key)).catch(() => [] as string[])).filter(isDayDir).sort();
+}
+
+/** Log names known for one vSECC: what it listed last time + what is on disk. */
+export async function storedFileNames(id: string, key: string): Promise<string[]> {
+  const names = new Set<string>((await readState(id))?.controllers[key]?.remoteFiles || []);
+  for (const d of await dayDirs(id, key)) {
+    for (const f of await fs.readdir(path.join(ctrlDir(id, key), d)).catch(() => [] as string[])) names.add(f);
   }
   return [...names].filter(isSafeLogName).sort();
 }
@@ -380,11 +483,11 @@ async function lastLinesOf(file: string, maxBytes: number): Promise<string[]> {
 }
 
 /** Last `n` stored lines of a log, walking back through the day folders. */
-export async function storedTail(id: string, name: string, n: number): Promise<string[]> {
+export async function storedTail(id: string, key: string, name: string, n: number): Promise<string[]> {
   if (!isSafeLogName(name)) return [];
   let out: string[] = [];
-  for (const d of (await dayDirs(id)).reverse()) {
-    const lines = await lastLinesOf(path.join(stationDir(id), d, name), READ_BYTES);
+  for (const d of (await dayDirs(id, key)).reverse()) {
+    const lines = await lastLinesOf(path.join(ctrlDir(id, key), d, name), READ_BYTES);
     out = lines.concat(out);
     if (out.length >= n) break;
   }
@@ -392,11 +495,11 @@ export async function storedTail(id: string, name: string, n: number): Promise<s
 }
 
 /** Every stored day of one log, oldest first, as one stream (for download). */
-export async function storedStream(id: string, name: string): Promise<ReadableStream<Uint8Array> | null> {
+export async function storedStream(id: string, key: string, name: string): Promise<ReadableStream<Uint8Array> | null> {
   if (!isSafeLogName(name)) return null;
   const files: string[] = [];
-  for (const d of await dayDirs(id)) {
-    const f = path.join(stationDir(id), d, name);
+  for (const d of await dayDirs(id, key)) {
+    const f = path.join(ctrlDir(id, key), d, name);
     if (await fs.stat(f).then(s => s.isFile()).catch(() => false)) files.push(f);
   }
   if (!files.length) return null;

@@ -14,9 +14,11 @@ interface LogView {
   partial?: boolean;
   timing?: { network: number; charger: number; bytes: number; cached: boolean; totalMs: number };
   fetchedAt?: string | null;
+  controllers?: { key: string; label: string; lastOkAt: string | null; offline: boolean }[];
+  controller?: string;
   collector?: {
     running: boolean; intervalSec: number; retentionDays: number; stations: number; offline?: number; lastCycleMs: number | null;
-    lastRunAt: string | null; lastOkAt: string | null; lastError: string | null; nextTryAt?: string | null; vsecc?: string | null;
+    lastRunAt: string | null; lastOkAt: string | null; lastError: string | null; nextTryAt?: string | null;
   };
 }
 
@@ -45,7 +47,9 @@ async function apiJson(url: string) {
 
 export default function VseccLogPanel({ stationId }: Props) {
   const { isAdmin } = useSessionAccess();
-  const base = `/api/vsecc-logs?stationId=${encodeURIComponent(stationId)}`;
+  // Cabinets with two vSECCs (.11 and .12): which one to show ('' = server default, the first).
+  const [reqCtrl, setReqCtrl] = useState('');
+  const base = `/api/vsecc-logs?stationId=${encodeURIComponent(stationId)}${reqCtrl ? `&controller=${encodeURIComponent(reqCtrl)}` : ''}`;
 
   const [files, setFiles] = useState<string[] | null>(null);
   const [filesError, setFilesError] = useState<string | null>(null);
@@ -65,7 +69,6 @@ export default function VseccLogPanel({ stationId }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    setFiles(null);
     setFilesError(null);
     setViewLoading(true);
     setViewError(null);
@@ -73,11 +76,12 @@ export default function VseccLogPanel({ stationId }: Props) {
       .then(j => {
         if (cancelled) return;
         setFiles(j.files || []);
+        setFilesError(null);
         loadedFor.current = `${j.name}|${tail}`;
         setSelected(j.name || '');
-        setView(j.name ? j : null);
+        setView(j);
       })
-      .catch(err => { if (!cancelled) setFilesError(err.message); })
+      .catch(err => { if (!cancelled) { setFilesError(err.message); setFiles(prev => prev ?? []); } })
       .finally(() => { if (!cancelled) { setViewLoading(false); setFresh(false); } });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -100,6 +104,29 @@ export default function VseccLogPanel({ stationId }: Props) {
 
   const refresh = () => { setFresh(true); setReloadKey(k => k + 1); };
 
+  // Downloads go through fetch so a failure shows a message here instead of a raw JSON page.
+  const [dl, setDl] = useState<{ busy: string | null; error: string | null }>({ busy: null, error: null });
+  const download = async (key: string, url: string, fallbackName: string) => {
+    setDl({ busy: key, error: null });
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error || `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      const m = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = m?.[1] || fallbackName;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      setDl({ busy: null, error: null });
+    } catch (err: any) {
+      setDl({ busy: null, error: err?.message || 'Download failed' });
+    }
+  };
+
   // Auto-refresh: re-read the server's stored copy (collected in the background) — cheap, no charger round trip.
   const [auto, setAuto] = useState(true);
   const [now, setNow] = useState(() => Date.now());
@@ -111,12 +138,18 @@ export default function VseccLogPanel({ stationId }: Props) {
     return () => clearInterval(t);
   }, []);
   useEffect(() => {
-    if (!auto || !selected || !files) return;
+    if (!auto || !files) return;
     let cancelled = false;
     const t = setInterval(() => {
       if (document.hidden) return;
-      apiJson(`${base}&name=${encodeURIComponent(selected)}&tail=${tail}`)
-        .then(j => { if (!cancelled && loadedFor.current === `${selected}|${tail}`) setView(j); })
+      apiJson(`${base}${selected ? `&name=${encodeURIComponent(selected)}` : ''}&tail=${tail}`)
+        .then(j => {
+          if (cancelled) return;
+          if (!selected) {                    // nothing collected yet → adopt the first log once it appears
+            if (j.files?.length) { setFiles(j.files); loadedFor.current = `${j.name}|${tail}`; setSelected(j.name); }
+            setView(j);
+          } else if (loadedFor.current === `${selected}|${tail}`) setView(j);
+        })
         .catch(() => { /* keep showing the last good view */ });
     }, pollSec * 1000);
     return () => { cancelled = true; clearInterval(t); };
@@ -146,25 +179,6 @@ export default function VseccLogPanel({ stationId }: Props) {
 
   const label = { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' };
 
-  if (filesError) {
-    return (
-      <div className="card" style={{ padding: '1rem', borderColor: 'var(--error)' }}>
-        <div style={{ color: 'var(--error-text)', fontWeight: 600, marginBottom: 6 }}>
-          {filesError.startsWith('Route conflict') ? '⚠ ZeroTier route conflict — logs could come from the wrong charger' : 'Cannot load vSECC log list'}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{filesError}</div>
-        {isAdmin ? (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-            Check VSECC_USERNAME / VSECC_PASSWORD / VSECC_URL_TEMPLATE in .env.local and that this server can reach the charger.
-          </div>
-        ) : (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>The charger may be offline — try again later or contact the administrator.</div>
-        )}
-        <button className="btn btn-secondary" style={{ marginTop: 10, fontSize: 11 }} onClick={refresh}>↻ Retry</button>
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* Controls */}
@@ -179,6 +193,18 @@ export default function VseccLogPanel({ stationId }: Props) {
               {files?.map(f => <option key={f} value={f}>{f}</option>)}
             </select>
           </div>
+
+          {(view?.controllers?.length ?? 0) > 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={label}>vSECC</label>
+              <select className="input" value={view?.controller || ''} onChange={e => setReqCtrl(e.target.value)}
+                style={{ padding: '4px 8px', fontSize: 11 }}>
+                {view!.controllers!.map(c => (
+                  <option key={c.key} value={c.key}>{c.label}{c.offline ? ' (offline)' : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label style={label}>Last lines</label>
@@ -209,14 +235,35 @@ export default function VseccLogPanel({ stationId }: Props) {
             onClick={refresh} disabled={viewLoading} title="Pull new lines from the charger now">
             {viewLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '↻'} Refresh
           </button>
-          <a className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none', opacity: selected ? 1 : 0.5, pointerEvents: selected ? 'auto' : 'none' }}
-            href={`${base}&name=${encodeURIComponent(selected)}&stored=1`}
-            title={`Everything stored on the server for this log (last ${view?.collector?.retentionDays ?? 7} days)`}>⬇ Stored</a>
-          <a className="btn btn-secondary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none', opacity: selected ? 1 : 0.5, pointerEvents: selected ? 'auto' : 'none' }}
-            href={`${base}&name=${encodeURIComponent(selected)}&download=1`} title="Current file straight from the charger">⬇ Live file</a>
-          <a className="btn btn-primary" style={{ padding: '5px 12px', fontSize: 11, textDecoration: 'none' }}
-            href={`${base}&zip=1`}>⬇ All logs (zip)</a>
+          {([
+            ['stored', '⬇ Stored', `${base}&name=${encodeURIComponent(selected)}&stored=1`, `${selected}_stored.log`, !!selected,
+              `Everything stored on the server for this log (last ${view?.collector?.retentionDays ?? 7} days) — works even when the charger is offline`],
+            ['live', '⬇ Live file', `${base}&name=${encodeURIComponent(selected)}&download=1`, selected, !!selected, 'Current file straight from the charger'],
+            ['zip', '⬇ All logs (zip)', `${base}&zip=1`, 'vsecc_logs.zip', true, 'All log files straight from the charger'],
+          ] as const).map(([key, text, url0, name, enabled, title]) => {
+            const url = !reqCtrl && view?.controller ? `${url0}&controller=${encodeURIComponent(view.controller)}` : url0;
+            return (
+            <button key={key} className={key === 'zip' ? 'btn btn-primary' : 'btn btn-secondary'} title={title}
+              style={{ padding: '5px 12px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              disabled={!enabled || !!dl.busy} onClick={() => download(key, url, name)}>
+              {dl.busy === key && <span className="spinner" style={{ width: 12, height: 12 }} />}{text}
+            </button>
+            );
+          })}
         </div>
+        {dl.error && (
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn-text)' }}>
+            ⚠ Download failed: {dl.error}
+            {' '}<span style={{ color: 'var(--text-muted)' }}>— the charger may be offline; ⬇ Stored still works.</span>
+            <button className="btn btn-secondary" style={{ marginLeft: 8, padding: '1px 8px', fontSize: 10 }} onClick={() => setDl({ busy: null, error: null })}>✕</button>
+          </div>
+        )}
+        {filesError && (
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn-text)' }}>
+            ⚠ {filesError}
+            {!isAdmin && ' — please try again later.'}
+          </div>
+        )}
         {view?.collector && (
           <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             <span title={view.collector.lastOkAt ? new Date(view.collector.lastOkAt).toLocaleString() : ''}>
@@ -226,7 +273,7 @@ export default function VseccLogPanel({ stationId }: Props) {
               <span>every ~{Math.max(view.collector.intervalSec, Math.round(view.collector.lastCycleMs / 1000))}s
                 {view.collector.stations > 1 ? ` (${view.collector.stations} Vector stations in rotation${view.collector.offline ? `, ${view.collector.offline} offline` : ''})` : ''}</span>
             )}
-            {view.collector.vsecc && <span>vSECC {view.collector.vsecc.replace(/^https?:\/\//, '').replace(/\/api$/, '')}</span>}
+            {view.controller && <span>vSECC {view.controller}{(view.controllers?.length ?? 0) > 1 ? ` · ${view.controllers!.length} vSECCs in this cabinet` : ''}</span>}
             {!view.collector.running && <span>background collector is off — showing what was stored</span>}
             {view.collector.lastError && (
               <span style={{ color: 'var(--warn-text)' }}>
@@ -280,7 +327,15 @@ export default function VseccLogPanel({ stationId }: Props) {
             fontSize: 11, lineHeight: 1.5, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
             background: 'var(--bg-elevated)', borderRadius: 'var(--radius-sm)', opacity: viewLoading ? 0.6 : 1,
           }}>
-            {shown.length === 0
+            {view.lines.length === 0
+              ? <span style={{ color: 'var(--text-muted)' }}>
+ {!view.collector?.lastRunAt
+                    ? 'Collecting this station for the first time — lines appear here automatically.'
+                    : view.collector?.lastError
+                    ? 'No log stored for this station yet — the charger has not been reachable. It will be collected automatically once it is back online.'
+                    : 'No log lines yet.'}
+                </span>
+              : shown.length === 0
               ? <span style={{ color: 'var(--text-muted)' }}>No matching lines</span>
               : shown.map((l, i) => <div key={i} style={{ color: levelColor(l) || 'var(--text-secondary)' }}>{l}</div>)}
           </pre>
