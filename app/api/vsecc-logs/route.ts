@@ -4,6 +4,7 @@ import { getRequestSession } from '@/lib/authorization';
 import { loadStations } from '@/lib/stationRepository';
 import { vseccBaseUrl, vseccGet, isSafeLogName, VseccError } from '@/lib/vsecc';
 import { isNetworkId, withStationNetwork, ZeroTierError } from '@/lib/zerotier';
+import { audit } from '@/lib/audit';
 
 const MAX_TAIL_LINES = 5000;
 /** Bytes fetched from the end of a log for the viewer (enough for 5000 typical lines). */
@@ -62,6 +63,10 @@ export async function GET(req: NextRequest) {
     const withList = url.searchParams.get('withList') === '1';
     const fresh = url.searchParams.get('fresh') === '1';
     const tail = Math.min(Math.max(Number(url.searchParams.get('tail')) || 500, 1), MAX_TAIL_LINES);
+
+    // Audit opening the log viewer and every download (not each filter / line-count change).
+    if (zip || download) void audit(session, 'vsecc_log_download', { req, target: sid, details: { file: zip ? '(all, zip)' : name } });
+    else if (withList) void audit(session, 'vsecc_log_view', { req, target: sid, details: { fresh } });
 
     const listKey = sid;
     const fileKey = (n: string) => `${sid}|${n}`;

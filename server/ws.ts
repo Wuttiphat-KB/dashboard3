@@ -8,19 +8,27 @@ import type { IncomingMessage } from 'http';
 let wss: WebSocketServer | null = null;
 const handshakes = new WeakMap<IncomingMessage, VerifiedSession>();
 const sessions = new WeakMap<WebSocket, VerifiedSession>();
-const stationChecks = new Map<string, Promise<boolean>>();
+const customerLookups = new Map<string, Promise<string | null>>();
 let stationLookup = (stationId: string): Promise<CustomerStation | null> =>
   getStationDb().collection<CustomerStation & { id: string }>('_stations').findOne({ id: stationId }, { projection: { customer: 1 } });
 
-/** Coalesce concurrent visibility checks for the same station; never send on errors. */
-function isPtStation(stationId: string): Promise<boolean> {
-  const pending = stationChecks.get(stationId);
+// stationId → customer name, cached briefly so a burst of MQTT messages costs one lookup.
+const customerCache = new Map<string, { name: string | null; at: number }>();
+const CUSTOMER_CACHE_MS = 30_000;
+
+/** Coalesce concurrent lookups for the same station; resolves null on errors (never send). */
+function stationCustomer(stationId: string): Promise<string | null> {
+  const hit = customerCache.get(stationId);
+  if (hit && Date.now() - hit.at < CUSTOMER_CACHE_MS) return Promise.resolve(hit.name);
+  const pending = customerLookups.get(stationId);
   if (pending) return pending;
   const check = Promise.resolve().then(async () => {
     const station = await stationLookup(stationId);
-    return !!station && canViewStation({ username: 'PTG', role: 'viewer', expiresAt: Infinity }, station);
-  }).catch(() => false).finally(() => stationChecks.delete(stationId));
-  stationChecks.set(stationId, check);
+    const name = station?.customer?.name?.trim() || null;
+    customerCache.set(stationId, { name, at: Date.now() });
+    return name;
+  }).catch(() => null).finally(() => customerLookups.delete(stationId));
+  customerLookups.set(stationId, check);
   return check;
 }
 
@@ -63,8 +71,9 @@ export function broadcast(type: string, stationId: string, data: unknown): void 
     if (Date.now() >= session.expiresAt) { client.close(1008, 'Session expired'); continue; }
     if (session.role === 'admin' && client.readyState === WebSocket.OPEN) {
       client.send(msg);
-    } else if (session.username === 'PTG') {
-      void isPtStation(stationId).then(allowed => {
+    } else if (session.role === 'customer' && session.customer) {
+      void stationCustomer(stationId).then(name => {
+        const allowed = !!name && canViewStation(session, { customer: { name } });
         if (allowed && Date.now() < session.expiresAt && client.readyState === WebSocket.OPEN) {
           client.send(msg);
         }
