@@ -29,11 +29,11 @@ async function col() {
   if (!g.__auditIndexed) {
     g.__auditIndexed = true;
     const days = Math.max(1, Number(process.env.AUDIT_RETENTION_DAYS) || 365);
-    Promise.all([
+    Promise.resolve().then(() => Promise.all([
       c.createIndex({ at: 1 }, { expireAfterSeconds: days * 86_400 }),
       c.createIndex({ username: 1, at: -1 }),
       c.createIndex({ action: 1, at: -1 }),
-    ]).catch(() => { g.__auditIndexed = false; });
+    ])).catch(() => { g.__auditIndexed = false; });
   }
   return c;
 }

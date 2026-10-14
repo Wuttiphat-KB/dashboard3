@@ -13,7 +13,10 @@ test('customer name survives station add, reload, edit and clearing', async () =
     const docs = collections.get(name)!;
     return {
       findOne: async (query: Doc) => docs.find(doc => Object.entries(query).every(([key, value]) => doc[key] === value)) ?? null,
-      find: () => ({ toArray: async () => docs.map(doc => structuredClone(doc)) }),
+      find: () => {
+        const cursor = { maxTimeMS: () => cursor, toArray: async () => docs.map(doc => structuredClone(doc)) };
+        return cursor;
+      },
       updateOne: async (query: Doc, update: { $set: Doc }) => {
         const existing = docs.find(doc => doc.id === query.id);
         if (existing) Object.assign(existing, structuredClone(update.$set));
@@ -30,7 +33,7 @@ test('customer name survives station add, reload, edit and clearing', async () =
     const { GET } = await import('../app/api/stations/route');
     const { invalidateStationsCache } = await import('../lib/stationsCache');
     invalidateStationsCache();
-    const token = await signToken(getExpectedCredentials().username);
+    const token = await signToken({ username: getExpectedCredentials().username, role: 'admin' as const });
     const read = () => GET(new NextRequest('http://localhost/api/stations', { headers: { Cookie: `${SESSION_COOKIE}=${token}` } }));
     const save = (doc: Doc) => POST(new NextRequest('http://localhost/api/stations/save', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: `${SESSION_COOKIE}=${token}` }, body: JSON.stringify(doc),

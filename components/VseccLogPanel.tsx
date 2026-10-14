@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSessionAccess } from '@/components/SessionProvider';
 
 interface Props {
   stationId: string;
@@ -30,6 +31,7 @@ async function apiJson(url: string) {
 }
 
 export default function VseccLogPanel({ stationId }: Props) {
+  const { isAdmin } = useSessionAccess();
   const base = `/api/vsecc-logs?stationId=${encodeURIComponent(stationId)}`;
 
   const [files, setFiles] = useState<string[] | null>(null);
@@ -111,9 +113,13 @@ export default function VseccLogPanel({ stationId }: Props) {
           {filesError.startsWith('Route conflict') ? '⚠ ZeroTier route conflict — logs could come from the wrong charger' : 'Cannot load vSECC log list'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{filesError}</div>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
-          Check VSECC_USERNAME / VSECC_PASSWORD / VSECC_URL_TEMPLATE in .env.local and that this server can reach the charger.
-        </div>
+        {isAdmin ? (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+            Check VSECC_USERNAME / VSECC_PASSWORD / VSECC_URL_TEMPLATE in .env.local and that this server can reach the charger.
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>The charger may be offline — try again later or contact the administrator.</div>
+        )}
         <button className="btn btn-secondary" style={{ marginTop: 10, fontSize: 11 }} onClick={refresh}>↻ Retry</button>
       </div>
     );

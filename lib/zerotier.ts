@@ -14,6 +14,8 @@
  *                          (or ZEROTIER_AUTHTOKEN_PATH pointing to a readable copy)
  *   ZEROTIER_LOCAL_URL     optional, default http://127.0.0.1:9993
  *   ZEROTIER_MEMBER_NAME   optional, name shown in Central, default "dashboard-server"
+ *   ZEROTIER_IDLE_LEAVE_MINUTES  optional, default 10 — leave the station network after
+ *                          this long without a Manager Log request (0 = stay joined)
  */
 
 import { readFileSync } from 'fs';
@@ -40,7 +42,7 @@ function localToken(): string {
   if (process.env.ZEROTIER_LOCAL_TOKEN) return process.env.ZEROTIER_LOCAL_TOKEN.trim();
   const p = process.env.ZEROTIER_AUTHTOKEN_PATH || DEFAULT_AUTHTOKEN_PATH;
   try {
-    return readFileSync(p, 'utf8').trim();
+    return readFileSync(/*turbopackIgnore: true*/ p, 'utf8').trim();
   } catch {
     throw new ZeroTierError(
       `Cannot read the local ZeroTier auth token (${p}). Set ZEROTIER_LOCAL_TOKEN in .env.local to the contents of authtoken.secret.`, 500);
@@ -195,14 +197,60 @@ async function ensureOnly(nwid: string, stationNetworkIds: Set<string>): Promise
   throw new ZeroTierError(`Timed out joining ZeroTier network ${target} (last status: ${last})`, 504);
 }
 
+// ── Idle auto-leave ──────────────────────────────────────────────────────
+// After the last request for a station network, a timer leaves it once the
+// server has been idle for ZEROTIER_IDLE_LEAVE_MINUTES. Every new request
+// resets the timer. The leave goes through the same queue, so it can never
+// cut off a transfer that is in progress.
+g.__ztIdle ??= { timer: null as NodeJS.Timeout | null, nwid: '' as string };
+
+function idleLeaveMs(): number {
+  const raw = process.env.ZEROTIER_IDLE_LEAVE_MINUTES;
+  const min = raw === undefined || raw === '' ? 10 : Number(raw);
+  return Number.isFinite(min) && min > 0 ? min * 60_000 : 0;
+}
+
+function scheduleIdleLeave(nwid: string): void {
+  const ms = idleLeaveMs();
+  if (g.__ztIdle.timer) clearTimeout(g.__ztIdle.timer);
+  g.__ztIdle.timer = null;
+  if (!ms) return;
+  g.__ztIdle.nwid = nwid;
+  g.__ztIdle.timer = setTimeout(() => {
+    g.__ztIdle.timer = null;
+    void exclusive(async () => {
+      // A newer request may have switched networks or re-armed the timer.
+      if (g.__ztIdle.timer || g.__ztIdle.nwid !== nwid) return;
+      try {
+        await local(`/network/${nwid}`, { method: 'DELETE' });
+        console.log(`[zerotier] left ${nwid} after ${Math.round(ms / 60_000)} min idle`);
+      } catch (err: any) {
+        console.warn(`[zerotier] idle leave of ${nwid} failed:`, err?.message || err);
+      }
+    });
+  }, ms);
+  g.__ztIdle.timer.unref?.();
+}
+
+/** Network the server is currently parked on for Manager Log, and when it will auto-leave. */
+export function zerotierIdleState(): { nwid: string | null; leavesInMs: number } {
+  return { nwid: g.__ztIdle.timer ? g.__ztIdle.nwid : null, leavesInMs: g.__ztIdle.timer ? idleLeaveMs() : 0 };
+}
+
 /**
  * Run `fn` while this server is a member of station network `nwid` only.
  * Calls are queued so two stations are never reached at the same time.
  */
 export function withStationNetwork<T>(nwid: string, stationNetworkIds: Iterable<string>, fn: () => Promise<T>): Promise<T> {
   const ids = new Set([...stationNetworkIds].map(s => s.toLowerCase()));
+  const target = nwid.toLowerCase();
   return exclusive(async () => {
-    await ensureOnly(nwid, ids);
-    return fn();
+    if (g.__ztIdle.timer) { clearTimeout(g.__ztIdle.timer); g.__ztIdle.timer = null; }
+    try {
+      await ensureOnly(target, ids);
+      return await fn();
+    } finally {
+      scheduleIdleLeave(target);   // re-arm after every request, success or not
+    }
   });
 }

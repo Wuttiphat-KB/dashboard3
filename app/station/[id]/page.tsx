@@ -176,7 +176,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
 
       {/* Tabs */}
       <div className="tabs">
-        {[...TABS, ...(station.controllerType === 'vector' && canEdit ? VECTOR_TABS : [])].map(t => (
+        {[...TABS, ...(station.controllerType === 'vector' ? VECTOR_TABS : [])].map(t => (
           <button key={t.id} className={`tab ${tab === t.id ? 'tab-active' : ''}`} onClick={() => setTab(t.id)}>
             {t.label}
           </button>
@@ -194,7 +194,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
         {tab === 'temperature' && <TempPanel         routerData={data.routerData}  tempHistory={data.tempHistory} stationId={station.id} />}
         {tab === 'fanrpm'      && <FanRPMPanel       fanData={data.fanData}        stationId={station.id} />}
         {tab === 'scripts'     && <MqttScriptPanel   scripts={data.scripts}        stationId={station.id} />}
-        {tab === 'vsecclog'    && station.controllerType === 'vector' && canEdit && <VseccLogPanel stationId={station.id} />}
+        {tab === 'vsecclog'    && station.controllerType === 'vector' && <VseccLogPanel stationId={station.id} />}
         {tab === 'plc'         && <PlcPanel          plcData={data.plcData}        stationId={station.id} chargerHeads={station.chargerHeads} />}
       </div>
     </div>

@@ -43,7 +43,7 @@ async function col() {
   const g = globalThis as any;
   if (!g.__usersIndexed) {
     g.__usersIndexed = true;
-    c.createIndex({ username: 1 }, { unique: true }).catch(() => { g.__usersIndexed = false; });
+    Promise.resolve().then(() => c.createIndex({ username: 1 }, { unique: true })).catch(() => { g.__usersIndexed = false; });
   }
   return c;
 }
