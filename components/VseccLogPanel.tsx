@@ -15,8 +15,8 @@ interface LogView {
   timing?: { network: number; charger: number; bytes: number; cached: boolean; totalMs: number };
   fetchedAt?: string | null;
   collector?: {
-    running: boolean; intervalSec: number; retentionDays: number; stations: number; lastCycleMs: number | null;
-    lastRunAt: string | null; lastOkAt: string | null; lastError: string | null;
+    running: boolean; intervalSec: number; retentionDays: number; stations: number; offline?: number; lastCycleMs: number | null;
+    lastRunAt: string | null; lastOkAt: string | null; lastError: string | null; nextTryAt?: string | null; vsecc?: string | null;
   };
 }
 
@@ -224,11 +224,16 @@ export default function VseccLogPanel({ stationId }: Props) {
             </span>
             {view.collector.running && view.collector.lastCycleMs != null && (
               <span>every ~{Math.max(view.collector.intervalSec, Math.round(view.collector.lastCycleMs / 1000))}s
-                {view.collector.stations > 1 ? ` (${view.collector.stations} Vector stations in rotation)` : ''}</span>
+                {view.collector.stations > 1 ? ` (${view.collector.stations} Vector stations in rotation${view.collector.offline ? `, ${view.collector.offline} offline` : ''})` : ''}</span>
             )}
+            {view.collector.vsecc && <span>vSECC {view.collector.vsecc.replace(/^https?:\/\//, '').replace(/\/api$/, '')}</span>}
             {!view.collector.running && <span>background collector is off — showing what was stored</span>}
             {view.collector.lastError && (
-              <span style={{ color: 'var(--warn-text)' }}>⚠ last attempt {ago(view.collector.lastRunAt, now)}: {view.collector.lastError}</span>
+              <span style={{ color: 'var(--warn-text)' }}>
+                ⚠ Charger offline? last attempt {ago(view.collector.lastRunAt, now)}: {view.collector.lastError}
+                {view.collector.nextTryAt && new Date(view.collector.nextTryAt).getTime() > now
+                  ? ` — next automatic try in ${Math.ceil((new Date(view.collector.nextTryAt).getTime() - now) / 60_000)} min (↻ Refresh to try now)` : ''}
+              </span>
             )}
           </div>
         )}

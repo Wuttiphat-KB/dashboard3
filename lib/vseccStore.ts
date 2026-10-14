@@ -25,9 +25,10 @@
 
 import { promises as fs, createReadStream } from 'fs';
 import path from 'path';
+import os from 'os';
 import { getMongoClient } from './mongoClient';
 import { loadStations } from './stationRepository';
-import { vseccBaseUrl, vseccGet, vseccConfigured, isSafeLogName } from './vsecc';
+import { vseccBaseCandidates, vseccGet, vseccConfigured, isSafeLogName, VseccError } from './vsecc';
 import { isNetworkId, withStationNetwork } from './zerotier';
 
 const SEED_BYTES   = 1_500_000;   // first contact / after rotation: keep only the end of the file
@@ -38,8 +39,36 @@ const READ_BYTES   = 1_500_000;   // per day-file, when building the viewer tail
 const intervalMs  = () => Math.max(5, Number(process.env.VSECC_COLLECT_INTERVAL_SEC) || 30) * 1000;
 const retentionDays = () => Math.max(1, Number(process.env.VSECC_LOG_RETENTION_DAYS) || 7);
 
-export function logRoot(): string {
+function configuredRoot(): string {
   return process.env.VSECC_LOG_DIR || path.join(/*turbopackIgnore: true*/ process.cwd(), 'data', 'vsecc-logs');
+}
+const fallbackRoot = () => path.join(os.tmpdir(), 'ev-dashboard-vsecc-logs');
+
+/** Store folder in use: the configured one, or a temp folder if that one cannot be written. */
+export function logRoot(): string {
+  return (globalThis as any).__vseccLogRoot || configuredRoot();
+}
+
+/** Check the store folder is writable once; fall back to the temp folder if not. */
+async function ensureRoot(): Promise<string> {
+  const gg = globalThis as any;
+  if (gg.__vseccLogRoot) return gg.__vseccLogRoot;
+  for (const dir of [configuredRoot(), fallbackRoot()]) {
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      const probe = path.join(dir, `.write-test-${process.pid}`);
+      await fs.writeFile(probe, 'ok');
+      await fs.unlink(probe).catch(() => {});
+      if (dir !== configuredRoot()) {
+        console.warn(`[vsecc-collector] cannot write to ${configuredRoot()} — using ${dir} instead. Set VSECC_LOG_DIR in .env.local to a writable folder.`);
+      }
+      gg.__vseccLogRoot = dir;
+      return dir;
+    } catch (err: any) {
+      console.warn(`[vsecc-collector] log folder ${dir} is not writable: ${err?.code || ''} ${err?.message || err}`);
+    }
+  }
+  throw new Error('No writable folder for vSECC logs — set VSECC_LOG_DIR in .env.local');
 }
 export const safeStationId = (id: string) => String(id).replace(/[^\w.\-]/g, '_');
 const stationDir = (id: string) => path.join(logRoot(), safeStationId(id));
@@ -59,6 +88,9 @@ export interface StationState {
   lastOkAt?: string;
   lastError?: string | null;
   lastDurationMs?: number;
+  baseUrl?: string | null;      // vSECC address that answered last time (.11 or .12)
+  failCount?: number;           // consecutive failed visits
+  nextTryAt?: string | null;    // background loop skips the station until then (offline back-off)
 }
 
 async function readState(id: string): Promise<StationState | null> {
@@ -66,6 +98,7 @@ async function readState(id: string): Promise<StationState | null> {
   catch { return null; }
 }
 async function writeState(id: string, st: StationState): Promise<void> {
+  await ensureRoot();
   const dir = stationDir(id);
   await fs.mkdir(dir, { recursive: true });
   const tmp = path.join(dir, '_state.json.tmp');
@@ -153,6 +186,48 @@ function fileFilter(): (n: string) => boolean {
   try { const re = new RegExp(raw); return n => re.test(n); } catch { return () => true; }
 }
 
+/** Wait before retrying a station that failed `fails` times in a row (offline charger). */
+function backoffMs(fails: number): number {
+  const maxMin = Math.max(1, Number(process.env.VSECC_OFFLINE_MAX_MIN) || 30);
+  return Math.min(maxMin * 60_000, 2 * 60_000 * 2 ** Math.max(0, fails - 1));   // 2, 4, 8, 16, 30 min
+}
+
+const isNetErr = (err: any) => err instanceof VseccError && (err.status === 502 || err.status === 504);
+
+/**
+ * Run `fn(base)` against the station's vSECC: joins its ZeroTier network if
+ * needed, then tries each candidate address (.11 / .12 …), the one that worked
+ * last time first. Returns the result and the address that answered.
+ */
+export async function withStationVsecc<T>(
+  st: any, allStations: any[], fn: (base: string) => Promise<T>, preferred?: string | null,
+): Promise<{ result: T; base: string }> {
+  const known = preferred ?? (await readState(String(st.id)))?.baseUrl ?? null;
+  const candidates = vseccBaseCandidates(st, known);
+  const tryAll = async () => {
+    let lastErr: any;
+    for (const base of candidates) {
+      try { return { result: await fn(base), base }; }
+      catch (err: any) {
+        lastErr = err;
+        if (!isNetErr(err)) throw err;                 // reachable but failed (auth, 404…) → no point trying others
+      }
+    }
+    if (candidates.length > 1 && lastErr instanceof VseccError) {
+      throw new VseccError(`Charger offline or unreachable — no vSECC answered at ${candidates.map(c => c.replace(/^https?:\/\//, '').replace(/\/api$/, '')).join(' / ')} (${lastErr.message})`, lastErr.status);
+    }
+    throw lastErr;
+  };
+  return !st.vseccApiUrl && isNetworkId(st.zerotierIp)
+    ? withStationNetwork(st.zerotierIp.trim(), allStations.map((s: any) => s.zerotierIp).filter(isNetworkId), tryAll)
+    : tryAll();
+}
+
+/** True while an offline station is waiting out its back-off. */
+export function inBackoff(state: StationState | null): boolean {
+  return !!state?.nextTryAt && Date.now() < new Date(state.nextTryAt).getTime();
+}
+
 /**
  * Pull new log bytes for one station now. Concurrent calls for the same
  * station share one run. `allStations` is needed to know which ZeroTier
@@ -167,30 +242,36 @@ export function collectStation(st: any, allStations: any[]): Promise<StationStat
     const t0 = Date.now();
     state.lastRunAt = new Date().toISOString();
     try {
-      const base = vseccBaseUrl(st);
-      const work = async () => {
-        const get: Getter = (p, ms, h, accept) => vseccGet(base, p, ms, id, h, accept);
+      await ensureRoot();
+      const { result: stored, base } = await withStationVsecc(st, allStations, async base => {
+        // Known-good address: allow a slow first answer; probing the other address: give up sooner.
+        const loginMs = base === state.baseUrl || !state.baseUrl ? 20_000 : 10_000;
+        const get: Getter = (p, ms, h, accept) => vseccGet(base, p, ms, id, h, accept, loginMs);
         const list = await (await get('/logging/filenames', 15_000, {}, [])).json();
         const want = fileFilter();
         const files: string[] = (Array.isArray(list) ? list : []).filter((n: any) => typeof n === 'string' && isSafeLogName(n));
         state.remoteFiles = files;
-        let stored = 0;
+        let bytes = 0;
         for (const name of files.filter(want)) {
           const r = await pullFile(get, id, name, state.files[name]);
           state.files[name] = r.st;
-          stored += r.stored;
+          bytes += r.stored;
         }
-        return stored;
-      };
-      const stored = !st.vseccApiUrl && isNetworkId(st.zerotierIp)
-        ? await withStationNetwork(st.zerotierIp.trim(), allStations.map((s: any) => s.zerotierIp).filter(isNetworkId), work)
-        : await work();
+        return bytes;
+      }, state.baseUrl);
+      if (state.baseUrl && state.baseUrl !== base) console.log(`[vsecc-collector] ${id}: vSECC found at ${base} (was ${state.baseUrl})`);
+      state.baseUrl = base;
       state.lastOkAt = new Date().toISOString();
       state.lastError = null;
+      state.failCount = 0;
+      state.nextTryAt = null;
       if (stored) console.log(`[vsecc-collector] ${id}: +${Math.round(stored / 1024)} KB in ${Date.now() - t0} ms`);
     } catch (err: any) {
       state.lastError = err?.message || String(err);
-      console.warn(`[vsecc-collector] ${id}: ${state.lastError}`);
+      state.failCount = (state.failCount || 0) + 1;
+      const wait = backoffMs(state.failCount);
+      state.nextTryAt = new Date(Date.now() + wait).toISOString();
+      console.warn(`[vsecc-collector] ${id}: ${state.lastError} — fail #${state.failCount}, next try in ${Math.round(wait / 60_000)} min`);
     }
     state.lastDurationMs = Date.now() - t0;
     await writeState(id, state).catch(err => console.warn(`[vsecc-collector] cannot write state for ${id}:`, err?.message));
@@ -201,8 +282,8 @@ export function collectStation(st: any, allStations: any[]): Promise<StationStat
 }
 
 // ── Background loop ──────────────────────────────────────────────────────
-interface LoopStatus { running: boolean; stations: number; lastCycleMs: number | null; cycleStartedAt: string | null; current: string | null }
-const loopStatus: LoopStatus = g.__vseccLoopStatus ??= { running: false, stations: 0, lastCycleMs: null, cycleStartedAt: null, current: null };
+interface LoopStatus { running: boolean; stations: number; offline: number; lastCycleMs: number | null; cycleStartedAt: string | null; current: string | null }
+const loopStatus: LoopStatus = g.__vseccLoopStatus ??= { running: false, stations: 0, offline: 0, lastCycleMs: null, cycleStartedAt: null, current: null };
 
 export function collectorStatus(): LoopStatus & { intervalSec: number; retentionDays: number } {
   return { ...loopStatus, intervalSec: intervalMs() / 1000, retentionDays: retentionDays() };
@@ -215,7 +296,8 @@ export function startVseccCollector(): void {
   g.__vseccCollectorStarted = true;
   if (process.env.VSECC_COLLECTOR === '0') { console.log('[vsecc-collector] disabled (VSECC_COLLECTOR=0)'); return; }
   if (!vseccConfigured()) { console.log('[vsecc-collector] not started — VSECC_USERNAME / VSECC_PASSWORD not set'); return; }
-  console.log(`[vsecc-collector] started → ${logRoot()} (every ${intervalMs() / 1000}s, keep ${retentionDays()} days)`);
+  void ensureRoot().catch(err => console.warn('[vsecc-collector]', err?.message || err));
+  console.log(`[vsecc-collector] started → ${configuredRoot()} (every ${intervalMs() / 1000}s, keep ${retentionDays()} days)`);
   loopStatus.running = true;
   void (async () => {
     await sleep(5_000);                     // let the server finish starting
@@ -227,10 +309,15 @@ export function startVseccCollector(): void {
         const all = await loadStations(await getMongoClient());
         const vector = all.filter((s: any) => s.controllerType === 'vector' && (s.vseccApiUrl || s.zerotierIp));
         loopStatus.stations = vector.length;
+        let offline = 0;
         for (const st of vector) {
+          // Offline chargers are retried on a back-off (2 → 30 min) so they don't slow down the others.
+          if (inBackoff(await readState(String(st.id)))) { offline++; continue; }
           loopStatus.current = String(st.id);
-          await collectStation(st, all).catch(() => {});
+          const r = await collectStation(st, all).catch(() => null);
+          if (r?.lastError) offline++;
         }
+        loopStatus.offline = offline;
       } catch (err: any) {
         console.warn('[vsecc-collector] cycle failed:', err?.message || err);
       }
