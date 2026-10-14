@@ -10,8 +10,10 @@
  * Configure in .env.local:
  *   VSECC_USERNAME      WebUI user dedicated to log access
  *   VSECC_PASSWORD
- *   VSECC_LAN_URL       vSECC address inside the cabinet LAN (default http://192.168.3.11/api),
- *                       used when the station's ZeroTier field is a network ID
+ *   VSECC_LAN_URLS      vSECC addresses inside the cabinet LAN, comma-separated
+ *                       (default http://192.168.3.11/api,http://192.168.3.12/api), tried in turn
+ *                       when the station's ZeroTier field is a network ID. VSECC_LAN_URL (single)
+ *                       still works and is tried first.
  *   VSECC_URL_TEMPLATE  used when the ZeroTier field is an IP; {zerotierIp} is replaced
  *                       (default: http://{zerotierIp}/api)
  *
@@ -19,8 +21,8 @@
  */
 
 const DEFAULT_TEMPLATE = 'http://{zerotierIp}/api';
-const DEFAULT_LAN_URL  = 'http://192.168.3.11/api';
-const LOGIN_TIMEOUT_MS = 10_000;
+const DEFAULT_LAN_URLS = ['http://192.168.3.11/api', 'http://192.168.3.12/api'];
+const LOGIN_TIMEOUT_MS = 20_000;   // first request after a ZeroTier join can be slow
 const TOKEN_TTL_MS     = 10 * 60_000;   // re-login every 10 min even if not rejected
 
 export class VseccError extends Error {
@@ -42,11 +44,28 @@ export function vseccBaseUrl(station: { zerotierIp?: string; vseccApiUrl?: strin
   if (station.vseccApiUrl) return station.vseccApiUrl.trim().replace(/\/+$/, '');
   const host = (station.zerotierIp || '').trim();
   if (!host) throw new VseccError('This station has no ZeroTier network ID / IP and no "vSECC API URL" set in Config', 400);
-  if (/^[0-9a-f]{16}$/i.test(host)) {
-    return (process.env.VSECC_LAN_URL || DEFAULT_LAN_URL).replace(/\/+$/, '');
-  }
+  if (/^[0-9a-f]{16}$/i.test(host)) return lanUrls()[0];
   const tpl = process.env.VSECC_URL_TEMPLATE || DEFAULT_TEMPLATE;
   return tpl.replace('{zerotierIp}', host).replace(/\/+$/, '');
+}
+
+function lanUrls(): string[] {
+  const list = [
+    ...(process.env.VSECC_LAN_URL ? [process.env.VSECC_LAN_URL] : []),
+    ...(process.env.VSECC_LAN_URLS ? process.env.VSECC_LAN_URLS.split(',') : DEFAULT_LAN_URLS),
+  ].map(u => u.trim().replace(/\/+$/, '')).filter(Boolean);
+  return [...new Set(list)];
+}
+
+/**
+ * Every address the station's vSECC may be at, best guess first.
+ * Cabinets differ (some vSECCs are .11, some .12), so for network-ID stations
+ * all LAN addresses are candidates; `preferred` (the one that worked last time) goes first.
+ */
+export function vseccBaseCandidates(station: { zerotierIp?: string; vseccApiUrl?: string }, preferred?: string | null): string[] {
+  const host = (station.zerotierIp || '').trim();
+  const list = !station.vseccApiUrl && /^[0-9a-f]{16}$/i.test(host) ? lanUrls() : [vseccBaseUrl(station)];
+  return preferred && list.includes(preferred) ? [preferred, ...list.filter(u => u !== preferred)] : list;
 }
 
 const g = globalThis as any;
@@ -77,13 +96,13 @@ function extractToken(body: string): string {
   return s.replace(/^"|"$/g, '');
 }
 
-async function login(base: string, key: string): Promise<string> {
+async function login(base: string, key: string, timeoutMs = LOGIN_TIMEOUT_MS): Promise<string> {
   if (!vseccConfigured()) throw new VseccError('VSECC_USERNAME / VSECC_PASSWORD are not set in .env.local', 500);
   const res = await fetchWithTimeout(`${base}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: process.env.VSECC_USERNAME, password: process.env.VSECC_PASSWORD }),
-  }, LOGIN_TIMEOUT_MS);
+  }, timeoutMs);
   if (!res.ok) throw new VseccError(`vSECC login failed (HTTP ${res.status})`, res.status === 401 ? 502 : 502);
   const token = extractToken(await res.text());
   if (!token) throw new VseccError('vSECC login returned an empty token');
@@ -94,11 +113,11 @@ async function login(base: string, key: string): Promise<string> {
 /** Authenticated GET; re-logs in once on 401. */
 export async function vseccGet(
   base: string, path: string, timeoutMs = 30_000, cacheKey = base, extraHeaders: Record<string, string> = {},
-  acceptStatuses: number[] = [],
+  acceptStatuses: number[] = [], loginTimeoutMs = LOGIN_TIMEOUT_MS,
 ): Promise<Response> {
   const key = `${cacheKey}|${base}`;
   let cached = tokens.get(key);
-  if (!cached || Date.now() - cached.at > TOKEN_TTL_MS) cached = { token: await login(base, key), at: Date.now() };
+  if (!cached || Date.now() - cached.at > TOKEN_TTL_MS) cached = { token: await login(base, key, loginTimeoutMs), at: Date.now() };
   let res = await fetchWithTimeout(`${base}${path}`, { headers: { ...extraHeaders, Authorization: `Bearer ${cached.token}` } }, timeoutMs);
   if (res.status === 401) {
     const token = await login(base, key);

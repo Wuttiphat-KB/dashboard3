@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
 import { getRequestSession } from '@/lib/authorization';
 import { loadStations } from '@/lib/stationRepository';
-import { vseccBaseUrl, vseccGet, isSafeLogName, VseccError } from '@/lib/vsecc';
-import { isNetworkId, withStationNetwork, ZeroTierError } from '@/lib/zerotier';
+import { vseccGet, isSafeLogName, VseccError } from '@/lib/vsecc';
+import { ZeroTierError } from '@/lib/zerotier';
 import {
-  collectStation, collectorStatus, storedFileNames, storedState, storedStream, storedTail, safeStationId,
+  collectStation, collectorStatus, withStationVsecc, storedFileNames, storedState, storedStream, storedTail, safeStationId,
 } from '@/lib/vseccStore';
 import { audit } from '@/lib/audit';
 import { canViewStation } from '@/lib/stationAccess';
@@ -72,8 +72,7 @@ export async function GET(req: NextRequest) {
     // ── Live from the charger (download / zip) ──
     if (zip || download) {
       if (download && !name) return NextResponse.json({ error: 'name is required' }, { status: 400 });
-      const base = vseccBaseUrl(st);
-      const work = async () => {
+      const work = async (base: string) => {
         const res = await vseccGet(base, zip ? '/logging/files' : `/logging/files/${encodeURIComponent(name!)}`, zip ? 180_000 : 120_000, sid);
         const buf = await res.arrayBuffer();        // read fully before the network can switch
         console.log(`[api/vsecc-logs] ${sid} ${zip ? 'zip' : `download ${name}`} bytes=${buf.byteLength} total=${Date.now() - t0}ms`);
@@ -81,10 +80,7 @@ export async function GET(req: NextRequest) {
           ? new NextResponse(buf, { headers: attachment('application/zip', `vsecc_logs_${safeId}.zip`) })
           : new NextResponse(buf, { headers: attachment('application/octet-stream', `${safeId}_${name}`) });
       };
-      if (!st.vseccApiUrl && isNetworkId(st.zerotierIp)) {
-        return await withStationNetwork(st.zerotierIp.trim(), stations.map((s: any) => s.zerotierIp).filter(isNetworkId), work);
-      }
-      return await work();
+      return (await withStationVsecc(st, stations, work)).result;   // tries .11 / .12, last-good first
     }
 
     // ── Viewer: read the store (pull first on ↻ Refresh or if nothing is stored yet) ──
@@ -117,6 +113,8 @@ export async function GET(req: NextRequest) {
         lastOkAt: state.lastOkAt || null,
         // Raw errors can include network IDs / config names — admins only.
         lastError: state.lastError ? (session.role === 'admin' ? state.lastError : 'Charger not reachable on the last attempt') : null,
+        nextTryAt: state.lastError ? state.nextTryAt || null : null,
+        vsecc: session.role === 'admin' ? (state.baseUrl || null) : null,
       },
       timing: { network: 0, charger: pulled ? state.lastDurationMs || 0 : 0, bytes: 0, cached: !pulled, totalMs: total },
     }, { headers: { 'Cache-Control': 'private, no-store', 'Server-Timing': `total;dur=${total}` } });
