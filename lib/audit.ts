@@ -16,7 +16,7 @@ const COLLECTION = '_audit_log';
 export type AuditAction =
   | 'login' | 'login_failed' | 'logout'
   | 'user_create' | 'user_update' | 'user_delete'
-  | 'customer_create' | 'customer_delete'
+  | 'customer_create' | 'customer_rename' | 'customer_delete'
   | 'station_save' | 'station_delete'
   | 'alert_ack' | 'energy_export'
   | 'vsecc_log_view' | 'vsecc_log_download';

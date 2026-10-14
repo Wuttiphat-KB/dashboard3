@@ -60,6 +60,7 @@ export default function UsersPage() {
   const [newCustomer, setNewCustomer] = useState('');
   const [custSaving, setCustSaving] = useState(false);
   const [custError, setCustError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -87,7 +88,7 @@ export default function UsersPage() {
       const body: any = form.mode === 'create'
         ? { role: form.role }
         : { displayName: form.displayName, role: form.role, disabled: form.disabled };
-      if (form.mode === 'edit' && form.role === 'customer') body.customer = form.customer;
+      if (form.role === 'customer') body.customer = form.customer;
       if (form.password) body.password = form.password;
       const res = form.mode === 'create'
         ? await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, username: form.username }) })
@@ -138,6 +139,30 @@ export default function UsersPage() {
     }
   }
 
+  async function renameCustomer(c: Customer, toRaw: string) {
+    const to = toRaw.trim();
+    if (!to || to === c.name) { setRenaming(null); return; }
+    const affected = c.stationCount || c.userCount
+      ? `\n\nThis also updates ${c.stationCount} station(s) and ${c.userCount ?? 0} user(s). Those users will be signed out and must log in again.`
+      : '';
+    if (!window.confirm(`Rename customer "${c.name}" to "${to}"?${affected}`)) return;
+    setCustSaving(true);
+    setCustError(null);
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(c.name)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: to }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+      setRenaming(null);
+      load();
+    } catch (err: any) {
+      setCustError(err.message);
+    } finally {
+      setCustSaving(false);
+    }
+  }
+
   async function removeCustomer(c: Customer) {
     const used = c.stationCount || c.userCount
       ? `\n\nStill used by ${c.stationCount} station(s) and ${c.userCount ?? 0} user(s) — they keep this name; it is only removed from the list.`
@@ -165,7 +190,7 @@ export default function UsersPage() {
           <p className="section-subtitle">Accounts that can sign in to the dashboard, their role and which customer&apos;s stations they see</p>
         </div>
         {tab === 'users' && (
-          <button className="btn btn-primary" onClick={() => { setFormError(null); setForm({ ...EMPTY_FORM }); }}>
+          <button className="btn btn-primary" onClick={() => { setFormError(null); setForm({ ...EMPTY_FORM, customer: customers[0]?.name || '' }); }}>
             + Add user
           </button>
         )}
@@ -220,7 +245,18 @@ export default function UsersPage() {
                 <tbody>
                   {customers.map(c => (
                     <tr key={c.name} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                      <td style={td}>{c.name}</td>
+                      <td style={td}>
+                        {renaming?.from === c.name ? (
+                          <form onSubmit={e => { e.preventDefault(); renameCustomer(c, renaming.to); }} style={{ display: 'flex', gap: 6 }}>
+                            <input className="input" autoFocus required maxLength={200} value={renaming.to}
+                              onChange={e => setRenaming({ from: c.name, to: e.target.value })}
+                              onKeyDown={e => { if (e.key === 'Escape') setRenaming(null); }}
+                              style={{ padding: '4px 8px', fontSize: 12, minWidth: 160 }} />
+                            <button type="submit" className="btn btn-primary btn-sm" disabled={custSaving || !renaming.to.trim()}>Save</button>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRenaming(null)} disabled={custSaving}>Cancel</button>
+                          </form>
+                        ) : c.name}
+                      </td>
                       <td style={td}>{c.stationCount}</td>
                       <td style={td}>{c.userCount ?? 0}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
@@ -228,6 +264,10 @@ export default function UsersPage() {
                           : <span style={{ fontSize: 11, color: 'var(--warn-text)' }}>Found on stations only</span>}
                       </td>
                       <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {renaming?.from !== c.name && (
+                          <><button className="btn btn-secondary btn-sm" disabled={custSaving}
+                            onClick={() => { setCustError(null); setRenaming({ from: c.name, to: c.name }); }}>Edit</button>{' '}</>
+                        )}
                         {c.registered
                           ? <button className="btn btn-danger btn-sm" onClick={() => removeCustomer(c)}>Remove</button>
                           : <button className="btn btn-secondary btn-sm" disabled={custSaving} onClick={() => addCustomer(c.name)}>Add to list</button>}
@@ -397,10 +437,10 @@ export default function UsersPage() {
               </select>
             </div>
 
-            {form.mode === 'edit' && form.role === 'customer' && (
+            {form.role === 'customer' && (
               <div>
-                <label className="input-label">Customer (optional)</label>
-                <input className="input" list="customer-names" value={form.customer}
+                <label className="input-label">{form.mode === 'create' ? 'Customer' : 'Customer (optional)'}</label>
+                <input className="input" required={form.mode === 'create'} list="customer-names" value={form.customer}
                   onChange={e => setForm({ ...form, customer: e.target.value })} placeholder="Customer name as set on stations" />
                 <datalist id="customer-names">
                   {customers.map(c => <option key={c.name} value={c.name}>{`${c.stationCount} stations`}</option>)}

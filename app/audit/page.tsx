@@ -24,6 +24,7 @@ const ACTIONS: { id: string; label: string }[] = [
   { id: 'user_update',        label: 'User updated' },
   { id: 'user_delete',        label: 'User deleted' },
   { id: 'customer_create',    label: 'Customer added' },
+  { id: 'customer_rename',    label: 'Customer renamed' },
   { id: 'customer_delete',    label: 'Customer removed' },
   { id: 'station_save',       label: 'Station saved' },
   { id: 'station_delete',     label: 'Station deleted' },
