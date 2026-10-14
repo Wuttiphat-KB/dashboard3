@@ -8,9 +8,12 @@ import { verifyToken, SESSION_COOKIE } from './lib/auth';
  *   - For unauthenticated /api/* calls → 401 JSON.
  *   - For unauthenticated page navigations → redirect to /login with ?from=.
  *
- * Verifies signed sessions and blocks viewer mutations; endpoints also enforce
+ * Verifies signed sessions and blocks customer access to admin pages / mutations; endpoints also enforce
  * permissions independently before changing data.
  */
+const ADMIN_PAGES = ['/config', '/settings', '/users', '/audit'];
+const ADMIN_APIS  = ['/api/users', '/api/audit', '/api/vsecc-logs', '/api/health'];
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -25,9 +28,13 @@ export async function proxy(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = await verifyToken(token);
   if (session) {
-    if (session.role === 'viewer') {
-      if (['/config', '/settings'].some(path => pathname === path || pathname.startsWith(path + '/'))) {
+    if (session.role !== 'admin') {
+      // Admin-only pages (each API also checks the role itself).
+      if (ADMIN_PAGES.some(path => pathname === path || pathname.startsWith(path + '/'))) {
         return NextResponse.redirect(new URL('/', req.url));
+      }
+      if (ADMIN_APIS.some(path => pathname === path || pathname.startsWith(path + '/'))) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
       if (pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         return NextResponse.json({ error: 'This account has read-only access' }, { status: 403 });

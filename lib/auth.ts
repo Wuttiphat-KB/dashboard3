@@ -1,8 +1,8 @@
 /**
  * Lightweight session auth — HMAC-signed cookie, no server state.
  *
- * Cookie value layout (base64url-encoded):
- *   <username>:<expiresAtMs>:<hmacSha256>
+ * Cookie value: v2.<base64url JSON {u: username, r: role, c: customer, e: expiresAtMs}>.<hmacSha256>
+ * Users live in MongoDB (lib/users.ts); AUTH_USERNAME/AUTH_PASSWORD is a built-in admin.
  *
  * Validation happens entirely from env vars + the cookie itself, so it works
  * across server restarts and inside Edge-runtime middleware (uses Web Crypto).
@@ -14,16 +14,26 @@
  */
 
 export const SESSION_COOKIE = 'auth_session';
-export type AccountRole = 'admin' | 'viewer';
 
-// PTG viewer account is disabled for now. Set to true to re-enable login
-// (customer scoping in stationAccess.ts / server/ws.ts is left in place).
-const PTG_ENABLED = false;
+/**
+ * admin    — everything: all stations, config, settings, users, audit log, vSECC logs.
+ * customer — read-only, limited to stations whose customer.name equals the user's customer;
+ *            can view dashboards/alerts/statistics and export energy reports.
+ */
+export type AccountRole = 'admin' | 'customer';
+export const ACCOUNT_ROLES: AccountRole[] = ['admin', 'customer'];
 
-export function getAccountRole(username: string): AccountRole | null {
-  if (username === 'PTG') return PTG_ENABLED ? 'viewer' : null;
-  return username === getExpectedCredentials().username ? 'admin' : null;
+export interface SessionIdentity {
+  username: string;
+  role: AccountRole;
+  customer?: string;      // required for role 'customer'
 }
+
+/** The .env.local AUTH_USERNAME account is a built-in admin that always works (bootstrap / recovery). */
+export function isEnvAdmin(username: string): boolean {
+  return username === getExpectedCredentials().username;
+}
+
 export const TOKEN_TTL_MS   = 7 * 86_400_000;  // 7 days (legacy fallback — sessions now expire daily, see nextDailyExpiry)
 
 // Sessions expire every day at 07:00 Thailand time (ICT = UTC+7, no DST), so
@@ -63,10 +73,9 @@ export function getExpectedCredentials(): { username: string; password: string }
   };
 }
 
-export function validateCredentials(user: string, pass: string): boolean {
-  if (user === 'PTG' && !PTG_ENABLED) return false;
-  const exp = user === 'PTG' ? { username: 'PTG', password: '1234' } : getExpectedCredentials();
-  // Constant-time-ish: compare length first, then chars.
+/** Constant-time check of the built-in .env admin credentials. */
+export function checkEnvAdmin(user: string, pass: string): boolean {
+  const exp = getExpectedCredentials();
   if (user.length !== exp.username.length || pass.length !== exp.password.length) return false;
   let diff = 0;
   for (let i = 0; i < user.length; i++) diff |= user.charCodeAt(i) ^ exp.username.charCodeAt(i);
@@ -117,44 +126,63 @@ async function hmacHex(message: string, secret: string): Promise<string> {
 }
 
 // ── Token sign / verify ───────────────────────────────────────────────
+//
+// Cookie value: "v2.<base64url(JSON{u,r,c,e})>.<hmacHex>"
+// Role + customer travel inside the signed token so the Edge proxy can gate
+// pages without a DB call; API routes additionally re-check the user record
+// (lib/authorization.getRequestSession) so disabling a user takes effect at once.
 
-export async function signToken(username: string, expiresAt = nextDailyExpiry()): Promise<string> {
-  const payload   = `${username}:${expiresAt}`;
-  const sig       = await hmacHex(payload, getSecret());
-  return toBase64Url(`${payload}:${sig}`);
+function utf8ToBase64Url(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return toBase64Url(bin);
+}
+
+function base64UrlToUtf8(s: string): string {
+  const bin = fromBase64UrlToString(s);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+export async function signToken(identity: SessionIdentity, expiresAt = nextDailyExpiry()): Promise<string> {
+  const payload = utf8ToBase64Url(JSON.stringify({
+    u: identity.username, r: identity.role, c: identity.customer || undefined, e: expiresAt,
+  }));
+  const sig = await hmacHex(`v2.${payload}`, getSecret());
+  return `v2.${payload}.${sig}`;
 }
 
 export interface VerifiedSession {
   username:  string;
   expiresAt: number;
   role: AccountRole;
+  customer?: string;
 }
 
 export async function verifyToken(token: string | undefined | null): Promise<VerifiedSession | null> {
   if (!token) return null;
   try {
-    const decoded = fromBase64UrlToString(token);
-    // payload may contain ':' in username theoretically — split from the right.
-    const lastColon = decoded.lastIndexOf(':');
-    const expColon  = decoded.lastIndexOf(':', lastColon - 1);
-    if (lastColon === -1 || expColon === -1) return null;
-    const username     = decoded.slice(0, expColon);
-    const expiresAtStr = decoded.slice(expColon + 1, lastColon);
-    const sig          = decoded.slice(lastColon + 1);
-    const expiresAt    = Number(expiresAtStr);
-    if (!username || isNaN(expiresAt)) return null;
-    if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) return null;
-    const expected = await hmacHex(`${username}:${expiresAt}`, getSecret());
+    const parts = token.split('.');
+    if (parts.length !== 3 || parts[0] !== 'v2') return null;
+    const [, payload, sig] = parts;
+    const expected = await hmacHex(`v2.${payload}`, getSecret());
     // Constant-time compare
     if (sig.length !== expected.length) return null;
     let diff = 0;
-    for (let i = 0; i < sig.length; i++) {
-      diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
-    }
+    for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
     if (diff !== 0) return null;
-    const role = getAccountRole(username);
-    if (!role) return null;
-    return { username, expiresAt, role };
+
+    const d = JSON.parse(base64UrlToUtf8(payload));
+    const username = typeof d?.u === 'string' ? d.u : '';
+    const role = d?.r as AccountRole;
+    const expiresAt = Number(d?.e);
+    const customer = typeof d?.c === 'string' && d.c.trim() ? d.c.trim() : undefined;
+    if (!username || !ACCOUNT_ROLES.includes(role)) return null;
+    if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) return null;
+    if (role === 'customer' && !customer) return null;
+    return { username, expiresAt, role, ...(customer ? { customer } : {}) };
   } catch {
     return null;
   }

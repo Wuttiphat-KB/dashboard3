@@ -4,7 +4,8 @@ import { getMongoClient } from '@/lib/mongoClient';
 import { invalidateFleetCache } from '@/lib/fleetCache';
 import { invalidateStationsCache } from '@/lib/stationsCache';
 import { validateCustomerInfo } from '@/lib/customerInfo';
-import { requireEditor } from '@/lib/authorization';
+import { requireEditor, getRequestSession } from '@/lib/authorization';
+import { audit } from '@/lib/audit';
 import { invalidateResponse } from '@/lib/apiCache';
 
 const STATION_DB = 'Station';
@@ -139,6 +140,8 @@ export async function POST(req: NextRequest) {
     // Also drop the built /api/fleet payload — clearing only the station
     // list would leave the cached response serving the pre-edit config.
     invalidateResponse('fleet');
+
+    void audit(await getRequestSession(req), 'station_save', { req, target: station.id, details: { name: station.name, created: !previous, customer: station.customer?.name, controllerType: station.controllerType } });
 
     return NextResponse.json({
       ok: true,

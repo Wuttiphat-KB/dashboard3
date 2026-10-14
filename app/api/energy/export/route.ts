@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
 import { getRequestSession, visibleStationIds } from '@/lib/authorization';
+import { audit } from '@/lib/audit';
 import { loadStations } from '@/lib/stationRepository';
 import { buildXlsx, XlsxCell } from '@/lib/xlsx';
 
@@ -99,6 +100,8 @@ export async function GET(req: NextRequest) {
         rows.push([ts, head, Number(kw.toFixed(3)), Number((kw * RATE).toFixed(3))]);
       }
     }
+
+    void audit(session, 'energy_export', { req, target: stationId, details: { start, end, format, rows: rows.length } });
 
     if (format === 'csv') {
       const lines = ['timestamp,connector,kW,Price'];

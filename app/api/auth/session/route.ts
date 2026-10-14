@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE, verifyToken } from '@/lib/auth';
+import { getRequestSession } from '@/lib/authorization';
 
 export async function GET(req: NextRequest) {
-  const session = await verifyToken(req.cookies.get(SESSION_COOKIE)?.value);
+  const session = await getRequestSession(req);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  return NextResponse.json({ username: session.username, role: session.role }, {
+  return NextResponse.json({ username: session.username, role: session.role, customer: session.customer ?? null }, {
     headers: { 'Cache-Control': 'no-store' },
   });
 }

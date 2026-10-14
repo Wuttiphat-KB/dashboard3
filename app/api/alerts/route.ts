@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient } from '@/lib/mongoClient';
 import { getRequestSession, requireEditor, visibleStationIds } from '@/lib/authorization';
+import { audit } from '@/lib/audit';
 
 const STATION_DB = 'Station';
 
@@ -39,6 +40,8 @@ export async function PATCH(req: NextRequest) {
       { id: { $in: ids } },
       { $set: { acknowledged: true, acknowledgedAt: new Date() } },
     );
+    const actor = await getRequestSession(req);
+    void audit(actor, 'alert_ack', { req, target: ids.length === 1 ? ids[0] : `${ids.length} alerts`, details: { ids: ids.slice(0, 50), modified: result.modifiedCount } });
     return NextResponse.json({ matched: result.matchedCount, modified: result.modifiedCount });
   } catch (err: any) {
     console.error('[api/alerts PATCH] error:', err?.message || err);

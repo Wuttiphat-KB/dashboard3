@@ -4,7 +4,9 @@ export interface CustomerStation {
   customer?: { name?: string };
 }
 
-/** PTG is scoped to the exact customer name PT; unassigned stations are private. */
-export function canViewStation(session: VerifiedSession, station: CustomerStation): boolean {
-  return session.role === 'admin' || (session.username === 'PTG' && station.customer?.name?.trim() === 'PT');
+/** Customer accounts see only stations whose customer.name equals their customer (exact, trimmed); unassigned stations stay private. */
+export function canViewStation(session: Pick<VerifiedSession, 'role' | 'customer'>, station: CustomerStation): boolean {
+  if (session.role === 'admin') return true;
+  const mine = session.customer?.trim();
+  return !!mine && station.customer?.name?.trim() === mine;
 }

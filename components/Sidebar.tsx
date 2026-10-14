@@ -14,6 +14,11 @@ const NAV_MAIN = [
   { href: '/settings', label: 'Settings',        abbr: 'ST' },
 ];
 
+const NAV_ADMIN = [
+  { href: '/users', label: 'Users & Roles', abbr: 'US' },
+  { href: '/audit', label: 'Audit Log',     abbr: 'AU' },
+];
+
 const NAV_STATS = [
   { href: '/statistics/energy',      label: 'Energy Usage', abbr: 'EU' },
   { href: '/statistics/peak-hours',  label: 'Peak Hours',   abbr: 'PH' },
@@ -104,7 +109,7 @@ function NavLink({ href, label, abbr, isActive, onClick, collapsed }: {
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, theme, onToggleTheme }: Props) {
   const pathname = usePathname();
-  const { canEdit, username } = useSessionAccess();
+  const { canEdit, username, role, customer } = useSessionAccess();
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -205,6 +210,27 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
             />
           ))}
 
+          {/* Administration (admin only) */}
+          {canEdit && (
+            <>
+              <div style={{ height: 1, background: 'var(--border-subtle)', margin: collapsed ? '8px 6px' : '10px 4px' }} />
+              {!collapsed && (
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '4px 12px 6px', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
+                  Administration
+                </div>
+              )}
+              {NAV_ADMIN.map(({ href, label, abbr }) => (
+                <NavLink
+                  key={href}
+                  href={href} label={label} abbr={abbr}
+                  isActive={isActive(href)}
+                  onClick={onClose}
+                  collapsed={collapsed}
+                />
+              ))}
+            </>
+          )}
+
           {/* Divider */}
           <div style={{ height: 1, background: 'var(--border-subtle)', margin: collapsed ? '8px 6px' : '10px 4px' }} />
 
@@ -255,7 +281,16 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
             whiteSpace: 'nowrap',
           }}>
             {/* Theme toggle */}
-            {username && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>{username}{!canEdit && ' · Read only'}</div>}
+            {username && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis' }}
+                title={role === 'customer' ? `Customer: ${customer}` : 'Administrator'}>
+                {username}
+                <span className={`badge ${role === 'admin' ? 'badge-info' : 'badge-warn'}`} style={{ marginLeft: 6, fontSize: 9 }}>
+                  {role === 'admin' ? 'Admin' : 'Customer'}
+                </span>
+                {role === 'customer' && customer && <div style={{ fontSize: 10, marginTop: 2 }}>{customer} · read only</div>}
+              </div>
+            )}
             <button
               onClick={onToggleTheme}
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}

@@ -3,7 +3,8 @@ import { cookies } from 'next/headers';
 import { getMongoClient } from '@/lib/mongoClient';
 import { invalidateFleetCache } from '@/lib/fleetCache';
 import { invalidateStationsCache } from '@/lib/stationsCache';
-import { requireEditor } from '@/lib/authorization';
+import { requireEditor, getRequestSession } from '@/lib/authorization';
+import { audit } from '@/lib/audit';
 import { invalidateResponse } from '@/lib/apiCache';
 
 const STATION_DB = 'Station';
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
     // list would leave the cached response serving the pre-edit config.
     invalidateResponse('fleet');
 
+    void audit(await getRequestSession(req), 'station_delete', { req, target: id, details: { collection: collectionName } });
     return NextResponse.json({ ok: true, id, collection: collectionName });
   } catch (err: any) {
     console.error('[api/stations/delete] error:', err?.message || err);

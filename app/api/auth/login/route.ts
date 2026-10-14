@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateCredentials, signToken, SESSION_COOKIE, nextDailyExpiry, getAccountRole } from '@/lib/auth';
+import { signToken, SESSION_COOKIE, nextDailyExpiry } from '@/lib/auth';
+import { authenticate } from '@/lib/users';
+import { audit, clientIp } from '@/lib/audit';
+
+// Simple brute-force brake: 10 failures per IP+username within 15 min → 15 min lockout.
+const WINDOW_MS = 15 * 60_000;
+const MAX_FAILS = 10;
+const g = globalThis as any;
+const fails: Map<string, { n: number; first: number }> = g.__loginFails ??= new Map();
 
 /**
  * POST /api/auth/login
@@ -17,16 +25,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'username and password are required' }, { status: 400 });
     }
 
-    if (!validateCredentials(username, password)) {
+    const key = `${clientIp(req) || '?'}|${username.toLowerCase()}`;
+    const f = fails.get(key);
+    if (f && Date.now() - f.first < WINDOW_MS && f.n >= MAX_FAILS) {
+      return NextResponse.json({ error: 'Too many failed attempts — try again in 15 minutes' }, { status: 429 });
+    }
+
+    const identity = await authenticate(username, password);
+    if (!identity) {
+      const cur = f && Date.now() - f.first < WINDOW_MS ? f : { n: 0, first: Date.now() };
+      cur.n++;
+      fails.set(key, cur);
+      void audit({ username }, 'login_failed', { req, ok: false });
       // Same response shape regardless of which field is wrong — prevents user enumeration.
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
+    fails.delete(key);
 
     // Session expires at the next 07:00 Thailand time — same value drives both
     // the signed token and the cookie lifetime so they expire together.
     const expiresAt = nextDailyExpiry();
-    const token = await signToken(username, expiresAt);
-    const res = NextResponse.json({ ok: true, username, role: getAccountRole(username) });
+    const token = await signToken(identity, expiresAt);
+    void audit(identity, 'login', { req });
+    const res = NextResponse.json({ ok: true, username: identity.username, role: identity.role, customer: identity.customer ?? null });
     res.cookies.set({ name: 'cfg_pin', value: '', path: '/', maxAge: 0, httpOnly: true, sameSite: 'lax' });
     res.cookies.set({
       name: SESSION_COOKIE,
