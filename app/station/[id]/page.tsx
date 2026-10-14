@@ -11,6 +11,7 @@ import TempPanel        from '@/components/TempPanel';
 import FanRPMPanel      from '@/components/FanRPMPanel';
 import MqttScriptPanel  from '@/components/MqttScriptPanel';
 import PlcPanel         from '@/components/PlcPanel';
+import VseccLogPanel    from '@/components/VseccLogPanel';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
 import { useSessionAccess } from '@/components/SessionProvider';
 const TABS = [
@@ -21,6 +22,9 @@ const TABS = [
   { id: 'fanrpm',      label: '◎  Fan RPM'        },
   { id: 'scripts',     label: '◈  MQTT Scripts'   },
   { id: 'plc',         label: '▤  PLC'            },
+];
+const VECTOR_TABS = [
+  { id: 'vsecclog',    label: '☰  Manager Log'    },
 ];
 
 export default function StationPage({ params }: { params: Promise<{ id: string }> }) {
@@ -172,7 +176,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
 
       {/* Tabs */}
       <div className="tabs">
-        {TABS.map(t => (
+        {[...TABS, ...(station.controllerType === 'vector' && canEdit ? VECTOR_TABS : [])].map(t => (
           <button key={t.id} className={`tab ${tab === t.id ? 'tab-active' : ''}`} onClick={() => setTab(t.id)}>
             {t.label}
           </button>
@@ -190,6 +194,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
         {tab === 'temperature' && <TempPanel         routerData={data.routerData}  tempHistory={data.tempHistory} stationId={station.id} />}
         {tab === 'fanrpm'      && <FanRPMPanel       fanData={data.fanData}        stationId={station.id} />}
         {tab === 'scripts'     && <MqttScriptPanel   scripts={data.scripts}        stationId={station.id} />}
+        {tab === 'vsecclog'    && station.controllerType === 'vector' && canEdit && <VseccLogPanel stationId={station.id} />}
         {tab === 'plc'         && <PlcPanel          plcData={data.plcData}        stationId={station.id} chargerHeads={station.chargerHeads} />}
       </div>
     </div>

@@ -572,6 +572,12 @@ function ConfigPageInner() {
                 Vector controllers publish PLC + PowerModule + temps + isolation in ONE topic. For Vector you should also set HMI Brand to DWIN.
               </div>
             </div>
+            {form.controllerType === 'vector' && (
+              <InputRow label="vSECC API URL (Manager Log)"
+                value={form.vseccApiUrl ?? ''} onChange={v => setForm(f => ({ ...f, vseccApiUrl: v }))}
+                placeholder="e.g. http://10.147.20.13/api" mono={true}
+                hint="Optional. Leave blank: the server joins this station's ZeroTier network automatically and uses http://192.168.3.11/api." />
+            )}
             <div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '6px 0' }}>
                 <input type="checkbox"

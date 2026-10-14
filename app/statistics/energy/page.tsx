@@ -205,18 +205,15 @@ export default function ChargingReportPage() {
             </div>
           ))}
 
-          {/* Export Excel / CSV */}
-          {(['xlsx', 'csv'] as const).map(fmt => (
-            <button
-              key={fmt}
-              className={fmt === 'xlsx' ? 'btn btn-primary' : 'btn btn-secondary'}
-              onClick={() => exportFile(fmt)}
-              disabled={!stationId || !rangeValid || exporting}
-              style={{ padding: '5px 12px', fontSize: 11, opacity: (!stationId || !rangeValid || exporting) ? 0.5 : 1 }}
-            >
-              {exporting ? 'Exporting...' : fmt === 'xlsx' ? '⬇ Export Excel' : '⬇ Export CSV'}
-            </button>
-          ))}
+          {/* Export CSV */}
+          <button
+            className="btn btn-primary"
+            onClick={() => exportFile('csv')}
+            disabled={!stationId || !rangeValid || exporting}
+            style={{ padding: '5px 12px', fontSize: 11, opacity: (!stationId || !rangeValid || exporting) ? 0.5 : 1 }}
+          >
+            {exporting ? 'Exporting...' : '⬇ Export CSV'}
+          </button>
 
           <div style={{ flex: 1, textAlign: 'right', fontSize: 11, color: 'var(--text-muted)' }}>
             {selectedStation && (

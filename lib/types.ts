@@ -63,6 +63,7 @@ export interface Station {
   fanBrand:         FanBrand;    // fan manufacturer: EBM, Winstrom, DAKO
   hmiBrand?:        HmiBrand;    // HMI display: Phoenix (reports status) | DWIN (treat as N/A) — default Phoenix
   controllerType?:  ControllerType;  // 'phoenix' (default) or 'vector' — picks the MQTT ingestion pipeline
+  vseccApiUrl?:     string;      // Vector only — override vSECC REST base URL (default from VSECC_URL_TEMPLATE)
   mqttTopics:       MqttTopics;
   mongoCollections: MongoCollections;
   telegram:         TelegramConfig;
