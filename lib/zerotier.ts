@@ -307,3 +307,31 @@ export function withStationNetwork<T>(nwid: string, stationNetworkIds: Iterable<
     }
   });
 }
+
+// ── Is the cabinet online? (Central, no join needed) ─────────────────────
+const ONLINE_WINDOW_MS = 10 * 60_000;
+const onlineCache: Map<string, { at: number; v: { online: boolean | null; lastSeen: number | null } }> = g.__ztOnlineCache ??= new Map();
+
+/**
+ * Asks ZeroTier Central whether any member of the station network other than
+ * this server has been seen recently. Lets the log collector skip an offline
+ * cabinet in ~1 s instead of joining the network and waiting for timeouts.
+ * online=null means "don't know" (no data / Central not configured) → caller should just try.
+ */
+export async function cabinetOnline(nwid: string): Promise<{ online: boolean | null; lastSeen: number | null }> {
+  const id = nwid.trim().toLowerCase();
+  const hit = onlineCache.get(id);
+  if (hit && Date.now() - hit.at < 60_000) return hit.v;
+  let v: { online: boolean | null; lastSeen: number | null } = { online: null, lastSeen: null };
+  if (zerotierConfigured()) {
+    try {
+      g.__ztSelfId ??= (await local('/status').catch(() => null))?.address || null;
+      const members: any[] = (await central(`/network/${id}/member`)) || [];
+      const others = members.filter(m => m?.nodeId && m.nodeId !== g.__ztSelfId && m.config?.authorized !== false);
+      const lastSeen = Math.max(0, ...others.map(m => Number(m.lastSeen || m.lastOnline || 0)));
+      if (lastSeen > 0) v = { online: Date.now() - lastSeen < ONLINE_WINDOW_MS, lastSeen };
+    } catch { /* unknown → caller tries normally */ }
+  }
+  onlineCache.set(id, { at: Date.now(), v });
+  return v;
+}
