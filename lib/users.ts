@@ -85,10 +85,10 @@ export async function authenticate(usernameRaw: string, password: string): Promi
   }
   if (doc.disabled || !(await verifyPassword(password, doc.passwordHash))) return null;
   if (!ACCOUNT_ROLES.includes(doc.role)) return null;
-  if (doc.role === 'customer' && !String(doc.customer || '').trim()) return null;
 
   c.updateOne({ username }, { $set: { lastLoginAt: new Date() } }).catch(() => {});
-  return { username, role: doc.role, ...(doc.role === 'customer' ? { customer: String(doc.customer).trim() } : {}) };
+  const cust = doc.role === 'customer' ? String(doc.customer || '').trim() : '';
+  return { username, role: doc.role, ...(cust ? { customer: cust } : {}) };
 }
 
 // ── Session re-validation (cached) ───────────────────────────────────────
@@ -124,9 +124,8 @@ function validateFields(input: { role?: unknown; customer?: unknown; password?: 
   if (creating || input.role !== undefined) {
     if (!ACCOUNT_ROLES.includes(input.role as AccountRole)) throw new UserError(`role must be one of: ${ACCOUNT_ROLES.join(', ')}`);
   }
-  if (input.role === 'customer' && !String(input.customer ?? '').trim()) {
-    throw new UserError('customer is required for role "customer"');
-  }
+  // customer is optional for role "customer": without it the account signs in
+  // but sees no stations until an admin assigns a customer (see stationAccess).
   if (creating || input.password !== undefined) {
     const pw = String(input.password ?? '');
     if (pw.length < MIN_PASSWORD_LENGTH) throw new UserError(`password must be at least ${MIN_PASSWORD_LENGTH} characters`);
@@ -147,7 +146,7 @@ export async function createUser(input: any, createdBy: string): Promise<UserRec
     username,
     passwordHash: await hashPassword(String(input.password)),
     role: input.role as AccountRole,
-    ...(input.role === 'customer' ? { customer: String(input.customer).trim() } : {}),
+    ...(input.role === 'customer' && String(input.customer ?? '').trim() ? { customer: String(input.customer).trim() } : {}),
     displayName: String(input.displayName ?? '').trim().slice(0, 100) || undefined,
     disabled: !!input.disabled,
     createdAt: now, updatedAt: now, createdBy,
@@ -175,7 +174,8 @@ export async function updateUser(usernameRaw: string, input: any): Promise<{ bef
 
   const $set: any = { updatedAt: new Date(), role };
   const $unset: any = {};
-  if (role === 'customer') $set.customer = String(customer).trim(); else $unset.customer = '';
+  const cust = role === 'customer' ? String(customer ?? '').trim() : '';
+  if (cust) $set.customer = cust; else $unset.customer = '';
   if (input.displayName !== undefined) $set.displayName = String(input.displayName).trim().slice(0, 100);
   if (input.disabled !== undefined) $set.disabled = !!input.disabled;
   if (input.password !== undefined) $set.passwordHash = await hashPassword(String(input.password));

@@ -1,0 +1,276 @@
+{
+  "appliedAt": "2026-10-14T06:52:03.403Z",
+  "updated": 202,
+  "alreadyMatched": 0,
+  "stations": 229,
+  "withCustomer": 202,
+  "missingCustomer": [
+    {
+      "id": "VRK",
+      "name": "VRK",
+      "displayName": "Vajiralongkorn_Dam2"
+    },
+    {
+      "id": "KUNGPHATTHANA",
+      "name": "KungPhatthana",
+      "displayName": "KungPhatthana"
+    },
+    {
+      "id": "SIRIBAIBUN2",
+      "name": "Siribaibun2",
+      "displayName": "Siribaibun2"
+    },
+    {
+      "id": "PHRAE1",
+      "name": "PHRAE5",
+      "displayName": "PHRAE5"
+    },
+    {
+      "id": "SIRIBAIBUN1",
+      "name": "Siribaibun1",
+      "displayName": "Siribaibun1"
+    },
+    {
+      "id": "MAHASARAKHAM2",
+      "name": "MahaSarakham2",
+      "displayName": "MahaSarakham2"
+    },
+    {
+      "id": "BKN1",
+      "name": "BKN1",
+      "displayName": "SKY1"
+    },
+    {
+      "id": "BKN2",
+      "name": "BKN2",
+      "displayName": "SKY2"
+    },
+    {
+      "id": "BKN3",
+      "name": "BKN3",
+      "displayName": "SKY3"
+    },
+    {
+      "id": "BKN4",
+      "name": "BKN4",
+      "displayName": "SKY4"
+    },
+    {
+      "id": "BKN5",
+      "name": "BKN5",
+      "displayName": "SKY5"
+    },
+    {
+      "id": "BKN6",
+      "name": "BKN6",
+      "displayName": "SKY6"
+    },
+    {
+      "id": "SKYPHRAEKSA1",
+      "name": "SKY_Phraeksa1",
+      "displayName": "SKY_Phraeksa1"
+    },
+    {
+      "id": "SKYPHRAEKSA2",
+      "name": "SKY_Phraeksa2",
+      "displayName": "SKY_Phraeksa2"
+    },
+    {
+      "id": "BANGPAHAN43",
+      "name": "BangPahan4_3",
+      "displayName": "Bangpahan4 (ตู้3)"
+    },
+    {
+      "id": "BANGPAHAN42",
+      "name": "BangPahan4_2",
+      "displayName": "Bangpahan4 (ตู้2)"
+    },
+    {
+      "id": "JUNJIRA1",
+      "name": "Junjira1",
+      "displayName": "Junjira1"
+    },
+    {
+      "id": "JUNJIRA2",
+      "name": "Junjira2",
+      "displayName": "Junjira2"
+    },
+    {
+      "id": "JUNJIRA3",
+      "name": "Junjira3",
+      "displayName": "Junjira3"
+    },
+    {
+      "id": "SKYEARLYBIRD1",
+      "name": "Sky_EarlyBird1",
+      "displayName": "SKY_EarlyBird1"
+    },
+    {
+      "id": "SKYEARLYBIRD2",
+      "name": "Sky_EarlyBird2",
+      "displayName": "SKY_EarlyBird2"
+    },
+    {
+      "id": "SKYCHUMPOHON1",
+      "name": "SKY_Chumpohon1",
+      "displayName": "SKY_Chumphon1"
+    },
+    {
+      "id": "SKYCHUMPOHON2",
+      "name": "SKY_Chumpohon2",
+      "displayName": "SKY_Chumphon2"
+    },
+    {
+      "id": "SKYCHUMPOHON3",
+      "name": "SKY_Chumpohon3",
+      "displayName": "SKY_Chumphon3"
+    },
+    {
+      "id": "SKYCHUMPOHON4",
+      "name": "SKY_Chumpohon4",
+      "displayName": "SKY_Chumphon4"
+    },
+    {
+      "id": "BKNPATTANA1",
+      "name": "BKN_Pattana_1",
+      "displayName": "Sungmen1"
+    },
+    {
+      "id": "BKNPATTANA2",
+      "name": "BKN_Pattana_2",
+      "displayName": "Sungmen2"
+    }
+  ],
+  "unmatchedSource": [
+    {
+      "row": 35,
+      "station": "BPTG_khumphaengphet",
+      "customer": "EGAT"
+    },
+    {
+      "row": 96,
+      "station": "Meamoh  1 (E3B6)",
+      "customer": "EGAT"
+    },
+    {
+      "row": 97,
+      "station": "Meamoh (ตู้ 2)",
+      "customer": "EGAT"
+    },
+    {
+      "row": 137,
+      "station": "PHRAE3",
+      "customer": "PRAE EV Station"
+    },
+    {
+      "row": 193,
+      "station": "VRK2",
+      "customer": "EGAT"
+    },
+    {
+      "row": 205,
+      "station": "PEA",
+      "customer": ""
+    },
+    {
+      "row": 207,
+      "station": "PEA120 (Test)",
+      "customer": ""
+    },
+    {
+      "row": 217,
+      "station": "39C7",
+      "customer": ""
+    },
+    {
+      "row": 218,
+      "station": "26007 sky ชุมพร",
+      "customer": ""
+    },
+    {
+      "row": 219,
+      "station": "26008 sky ชุมพร",
+      "customer": ""
+    },
+    {
+      "row": 220,
+      "station": "26009 (8419) sky ราชพฤกษ์ 1",
+      "customer": ""
+    },
+    {
+      "row": 221,
+      "station": "26010 (3947) sky ราชพฤกษ์ 2",
+      "customer": ""
+    },
+    {
+      "row": 222,
+      "station": "26011 sky ชุมพร (สาหร่าย)",
+      "customer": ""
+    },
+    {
+      "row": 223,
+      "station": "26012 sky ชุมพร",
+      "customer": ""
+    },
+    {
+      "row": 224,
+      "station": "26013 (4B6B)",
+      "customer": ""
+    },
+    {
+      "row": 225,
+      "station": "26014 (4BCC)",
+      "customer": ""
+    },
+    {
+      "row": 227,
+      "station": "cd8c",
+      "customer": ""
+    },
+    {
+      "row": 228,
+      "station": "สููงเม่น1 (0EDE)",
+      "customer": ""
+    },
+    {
+      "row": 229,
+      "station": "สูงเม่น2 (0BF5)",
+      "customer": ""
+    },
+    {
+      "row": 230,
+      "station": "120-26021",
+      "customer": ""
+    },
+    {
+      "row": 231,
+      "station": "120-26022",
+      "customer": ""
+    },
+    {
+      "row": 232,
+      "station": "150-26005",
+      "customer": ""
+    },
+    {
+      "row": 233,
+      "station": "FEC1",
+      "customer": ""
+    },
+    {
+      "row": 234,
+      "station": "D577",
+      "customer": ""
+    },
+    {
+      "row": 235,
+      "station": "RUT906_0F07",
+      "customer": ""
+    },
+    {
+      "row": 236,
+      "station": "RUT906_0FE6",
+      "customer": ""
+    }
+  ]
+}

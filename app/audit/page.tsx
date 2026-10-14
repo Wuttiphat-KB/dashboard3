@@ -23,6 +23,8 @@ const ACTIONS: { id: string; label: string }[] = [
   { id: 'user_create',        label: 'User created' },
   { id: 'user_update',        label: 'User updated' },
   { id: 'user_delete',        label: 'User deleted' },
+  { id: 'customer_create',    label: 'Customer added' },
+  { id: 'customer_delete',    label: 'Customer removed' },
   { id: 'station_save',       label: 'Station saved' },
   { id: 'station_delete',     label: 'Station deleted' },
   { id: 'alert_ack',          label: 'Alert acknowledged' },
