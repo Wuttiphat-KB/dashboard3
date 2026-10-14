@@ -14,6 +14,8 @@
  *                          (or ZEROTIER_AUTHTOKEN_PATH pointing to a readable copy)
  *   ZEROTIER_LOCAL_URL     optional, default http://127.0.0.1:9993
  *   ZEROTIER_MEMBER_NAME   optional, name shown in Central, default "dashboard-server"
+ *   ZEROTIER_LEAVE_CONFLICTING   optional, default on — leave any other joined network that also routes
+ *                          the cabinet LAN (e.g. joined by hand). 0 = refuse with "Route conflict" instead.
  *   ZEROTIER_IDLE_LEAVE_MINUTES  optional, default 10 — leave the station network after
  *                          this long without a Manager Log request (0 = stay joined)
  */
@@ -177,6 +179,11 @@ function findRouteConflicts(target: any, others: any[]): string[] {
   return out;
 }
 
+/** ZEROTIER_LEAVE_CONFLICTING=0 keeps hand-joined overlapping networks (the request then fails instead). */
+function autoLeaveConflicts(): boolean {
+  return process.env.ZEROTIER_LEAVE_CONFLICTING !== '0';
+}
+
 async function ensureOnly(nwid: string, stationNetworkIds: Set<string>): Promise<void> {
   const target = nwid.toLowerCase();
   const status = await local('/status');
@@ -216,7 +223,17 @@ async function ensureOnly(nwid: string, stationNetworkIds: Set<string>): Promise
       if (!already || already.status !== 'OK') await sleep(2000);
       const others = ((await local('/network')) || [])
         .filter((o: any) => String(o.id || o.nwid || '').toLowerCase() !== target);
-      const conflicts = findRouteConflicts(n, others);
+      let conflicts = findRouteConflicts(n, others);
+      if (conflicts.length && autoLeaveConflicts()) {
+        // Networks joined by hand on the server (not linked to any station) that also route the
+        // cabinet LAN: leave them, otherwise requests could reach the wrong cabinet.
+        const ids = others.filter((o: any) => findRouteConflicts(n, [o]).length).map((o: any) => String(o.id || o.nwid).toLowerCase());
+        console.warn(`[zerotier] leaving networks that overlap station network ${target}: ${conflicts.join('; ')}`);
+        for (const id of ids) await local(`/network/${id}`, { method: 'DELETE' }).catch(() => {});
+        await sleep(2000);
+        const after = ((await local('/network')) || []).filter((o: any) => String(o.id || o.nwid || '').toLowerCase() !== target);
+        conflicts = findRouteConflicts(n, after);
+      }
       if (conflicts.length) {
         console.warn(`[zerotier] route conflict for ${target}: ${conflicts.join('; ')}`);
         throw new ZeroTierError(

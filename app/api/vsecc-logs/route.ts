@@ -5,9 +5,10 @@ import { loadStations } from '@/lib/stationRepository';
 import { vseccGet, isSafeLogName, VseccError } from '@/lib/vsecc';
 import { ZeroTierError } from '@/lib/zerotier';
 import {
-  collectStation, collectorStatus, withStationVsecc, storedControllers, storedFileNames, storedState, storedStream, storedTail, safeStationId,
+  collectStation, collectorStatus, withStationVsecc, storedControllers, storedZipEntries, storedFileNames, storedState, storedStream, storedTail, safeStationId,
 } from '@/lib/vseccStore';
 import { audit } from '@/lib/audit';
+import { buildZip } from '@/lib/zipWriter';
 import { canViewStation } from '@/lib/stationAccess';
 
 const MAX_TAIL_LINES = 5000;
@@ -25,7 +26,8 @@ function pickDefault(files: string[]): string {
  *   add &fresh=1 → pull new lines from the charger right now, then read the store
  * GET /api/vsecc-logs?stationId=X&name=F&stored=1       → stored copy (up to 7 days) as attachment
  * GET /api/vsecc-logs?stationId=X&name=F&download=1     → current file straight from the charger
- * GET /api/vsecc-logs?stationId=X&zip=1                 → all logs as zip, straight from the charger
+ * GET /api/vsecc-logs?stationId=X&zip=1                 → every stored log (all days, all vSECCs) as zip — instant, works offline
+ * GET /api/vsecc-logs?stationId=X&zip=1&live=1          → all logs as zip, straight from the charger
  * Add &controller=192.168.3.12 to pick one vSECC when the cabinet has two (default: first one).
  *
  * Admins: any Vector station. Customers: only their own customer's stations.
@@ -55,13 +57,14 @@ export async function GET(req: NextRequest) {
     const zip = url.searchParams.get('zip') === '1';
     const download = url.searchParams.get('download') === '1';
     const stored = url.searchParams.get('stored') === '1';
+    const live = url.searchParams.get('live') === '1';
     const withList = url.searchParams.get('withList') === '1';
     const fresh = url.searchParams.get('fresh') === '1';
     let controller = url.searchParams.get('controller') || '';
     if (controller && !/^[\w.\-]{1,100}$/.test(controller)) return NextResponse.json({ error: 'Invalid controller' }, { status: 400 });
     const tail = Math.min(Math.max(Number(url.searchParams.get('tail')) || 500, 1), MAX_TAIL_LINES);
 
-    if (zip || download || stored) void audit(session, 'vsecc_log_download', { req, target: sid, details: { file: zip ? '(all, zip)' : name, stored, controller } });
+    if (zip || download || stored) void audit(session, 'vsecc_log_download', { req, target: sid, details: { file: zip ? (live ? '(all, live zip)' : '(all stored, zip)') : name, stored, controller } });
     else if (withList) void audit(session, 'vsecc_log_view', { req, target: sid, details: { fresh } });
 
     // ── Stored copy download ──
@@ -72,6 +75,15 @@ export async function GET(req: NextRequest) {
       const body = key ? await storedStream(sid, key, name) : null;
       if (!body) return NextResponse.json({ error: 'Nothing stored for this log yet' }, { status: 404 });
       return new NextResponse(body, { headers: attachment('text/plain; charset=utf-8', `${safeId}${ctrls.length > 1 ? `_${key}` : ''}_${name.replace(/\.log$/, '')}_stored.log`) });
+    }
+
+    // ── All stored logs as one zip ──
+    if (zip && !live) {
+      const entries = await storedZipEntries(sid);
+      if (!entries.length) return NextResponse.json({ error: 'Nothing stored for this station yet' }, { status: 404 });
+      const buf = buildZip(entries);
+      console.log(`[api/vsecc-logs] ${sid} stored zip files=${entries.length} bytes=${buf.length} total=${Date.now() - t0}ms`);
+      return new NextResponse(new Uint8Array(buf), { headers: attachment('application/zip', `vsecc_logs_${safeId}_stored.zip`) });
     }
 
     // ── Live from the charger (download / zip) ──

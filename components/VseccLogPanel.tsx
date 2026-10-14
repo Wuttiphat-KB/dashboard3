@@ -106,8 +106,10 @@ export default function VseccLogPanel({ stationId }: Props) {
 
   // Downloads go through fetch so a failure shows a message here instead of a raw JSON page.
   const [dl, setDl] = useState<{ busy: string | null; error: string | null }>({ busy: null, error: null });
+  const [dlStarted, setDlStarted] = useState(0);
   const download = async (key: string, url: string, fallbackName: string) => {
     setDl({ busy: key, error: null });
+    setDlStarted(Date.now());
     try {
       const r = await fetch(url, { cache: 'no-store' });
       if (!r.ok) {
@@ -239,7 +241,9 @@ export default function VseccLogPanel({ stationId }: Props) {
             ['stored', '⬇ Stored', `${base}&name=${encodeURIComponent(selected)}&stored=1`, `${selected}_stored.log`, !!selected,
               `Everything stored on the server for this log (last ${view?.collector?.retentionDays ?? 7} days) — works even when the charger is offline`],
             ['live', '⬇ Live file', `${base}&name=${encodeURIComponent(selected)}&download=1`, selected, !!selected, 'Current file straight from the charger'],
-            ['zip', '⬇ All logs (zip)', `${base}&zip=1`, 'vsecc_logs.zip', true, 'All log files straight from the charger'],
+            ['zip', '⬇ All logs (zip)', `${base}&zip=1`, 'vsecc_logs.zip', true,
+              `Every log stored on the server (last ${view?.collector?.retentionDays ?? 7} days${(view?.controllers?.length ?? 0) > 1 ? ', both vSECCs' : ''}) — works even when the charger is offline`],
+            ['livezip', '⬇ Live zip', `${base}&zip=1&live=1`, 'vsecc_logs_live.zip', true, 'All log files straight from the charger (slow: goes over ZeroTier)'],
           ] as const).map(([key, text, url0, name, enabled, title]) => {
             const url = !reqCtrl && view?.controller ? `${url0}&controller=${encodeURIComponent(view.controller)}` : url0;
             return (
@@ -251,6 +255,13 @@ export default function VseccLogPanel({ stationId }: Props) {
             );
           })}
         </div>
+        {dl.busy && (
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="spinner" style={{ width: 12, height: 12 }} />
+            Preparing download… {Math.max(0, Math.round((now - dlStarted) / 1000))}s
+            {(dl.busy === 'live' || dl.busy === 'livezip') && ' — fetching from the charger over ZeroTier, this can take a minute or two'}
+          </div>
+        )}
         {dl.error && (
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--warn-text)' }}>
             ⚠ Download failed: {dl.error}

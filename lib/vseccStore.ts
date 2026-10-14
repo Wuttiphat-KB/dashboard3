@@ -378,10 +378,13 @@ export function collectStation(st: any, allStations: any[], opts: { probeAll?: b
       if (stored) console.log(`[vsecc-collector] ${id}: +${Math.round(stored / 1024)} KB in ${Date.now() - t0} ms`);
     } catch (err: any) {
       state.lastError = err?.message || String(err);
-      state.failCount = (state.failCount || 0) + 1;
-      const wait = backoffMs(state.failCount);
+      // Server-side ZeroTier problems (route conflict, join timeout) are not the charger's fault: retry next cycle.
+      const serverSide = /Route conflict|joining ZeroTier|ZeroTier service|ZeroTier Central/i.test(state.lastError || '');
+      state.failCount = serverSide ? 0 : (state.failCount || 0) + 1;
+      const wait = serverSide ? 0 : backoffMs(state.failCount);
       state.nextTryAt = new Date(Date.now() + wait).toISOString();
-      console.warn(`[vsecc-collector] ${id}: ${state.lastError} — fail #${state.failCount}, next try in ${Math.round(wait / 60_000)} min`);
+      if (serverSide) state.nextTryAt = null;
+      console.warn(`[vsecc-collector] ${id}: ${state.lastError}` + (serverSide ? ' — server-side ZeroTier issue, retry next cycle' : ` — fail #${state.failCount}, next try in ${Math.round(wait / 60_000)} min`));
     }
     state.lastDurationMs = Date.now() - t0;
     await writeState(id, state).catch(err => console.warn(`[vsecc-collector] cannot write state for ${id}:`, err?.message));
@@ -541,4 +544,24 @@ export async function storedStream(id: string, key: string, name: string): Promi
       } catch (err) { ctrl.error(err); }
     },
   });
+}
+
+/**
+ * Every stored log file of a station as zip entries: <day>/<logname>, or
+ * <vSECC>/<day>/<logname> when the cabinet has two vSECCs.
+ */
+export async function storedZipEntries(id: string, onlyKey?: string | null): Promise<{ name: string; data: Buffer; mtime: Date }[]> {
+  const ctrls = (await storedControllers(id)).map(c => c.key).filter(k => !onlyKey || k === onlyKey);
+  const out: { name: string; data: Buffer; mtime: Date }[] = [];
+  for (const key of ctrls) {
+    for (const d of await dayDirs(id, key)) {
+      for (const f of (await fs.readdir(path.join(ctrlDir(id, key), d)).catch(() => [] as string[])).filter(isSafeLogName).sort()) {
+        const full = path.join(ctrlDir(id, key), d, f);
+        const st = await fs.stat(full).catch(() => null);
+        if (!st?.isFile()) continue;
+        out.push({ name: ctrls.length > 1 ? `${key}/${d}/${f}` : `${d}/${f}`, data: await fs.readFile(full), mtime: st.mtime });
+      }
+    }
+  }
+  return out;
 }
