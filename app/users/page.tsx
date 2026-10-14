@@ -80,7 +80,9 @@ export default function UsersPage() {
     setSaving(true);
     setFormError(null);
     try {
-      const body: any = { displayName: form.displayName, role: form.role, disabled: form.disabled };
+      const body: any = form.mode === 'create'
+        ? { role: form.role }
+        : { displayName: form.displayName, role: form.role, disabled: form.disabled };
       if (form.role === 'customer') body.customer = form.customer;
       if (form.password) body.password = form.password;
       const res = form.mode === 'create'
@@ -265,9 +267,18 @@ export default function UsersPage() {
               </div>
             )}
 
+            {form.mode === 'edit' && (
+              <div>
+                <label className="input-label">Display name (optional)</label>
+                <input className="input" value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} />
+              </div>
+            )}
+
             <div>
-              <label className="input-label">Display name (optional)</label>
-              <input className="input" value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} />
+              <label className="input-label">{form.mode === 'create' ? 'Password' : 'New password (leave blank to keep)'}</label>
+              <input className="input" type="password" autoComplete="new-password" minLength={form.mode === 'create' || form.password ? minPw : undefined}
+                required={form.mode === 'create'} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>At least {minPw} characters</div>
             </div>
 
             <div>
@@ -294,14 +305,7 @@ export default function UsersPage() {
               </div>
             )}
 
-            <div>
-              <label className="input-label">{form.mode === 'create' ? 'Password' : 'New password (leave blank to keep)'}</label>
-              <input className="input" type="password" autoComplete="new-password" minLength={form.mode === 'create' || form.password ? minPw : undefined}
-                required={form.mode === 'create'} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>At least {minPw} characters</div>
-            </div>
-
-            {form.username !== me && (
+            {form.mode === 'edit' && form.username !== me && (
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
                 <input type="checkbox" checked={form.disabled} onChange={e => setForm({ ...form, disabled: e.target.checked })} />
                 Disabled (cannot sign in; active sessions end within ~30 s)
