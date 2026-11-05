@@ -449,8 +449,12 @@ function FanRPMCard({ station, data }: { station: Station; data: StationDashboar
           );
         })}
       </div>
+      {/* Station offline → the API sends no readings (the last snapshot isn't
+          current), so the grid above is empty; say why instead of "0/0". */}
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-        {runningN}/{entries.length} fans running
+        {data.fanData.live === false
+          ? `No live fan data — station offline${data.fanData.timestamp ? ` · last update ${timeSince(data.fanData.timestamp)}` : ''}`
+          : `${runningN}/${entries.length} fans running`}
       </div>
     </Shell>
   );
@@ -501,10 +505,14 @@ function DeviceStatusCard({ station, data }: { station: Station; data: StationDa
 
   const hasDanger = inactiveStatuses.length > 0 || tempState === 'danger' || emergencyActive;
   const hasWarn   = !hasDanger && (tempState === 'warn' || tempSensorFaults.length > 0);
-  const cardBorder = !ds ? 'var(--border)' : hasDanger ? 'var(--error)' : hasWarn ? 'var(--warn)' : 'var(--ok)';
-  const cardBadge  = !ds ? (
+  // No live PLC payload (the API omits deviceStatus): an offline station keeps
+  // Shell's OFFLINE badge and red border; a reachable one shows NO DATA.
+  const stationOffline = deriveStatus(data) === 'offline';
+  const cardBorder = !ds ? (stationOffline ? undefined : 'var(--border)')
+    : hasDanger ? 'var(--error)' : hasWarn ? 'var(--warn)' : 'var(--ok)';
+  const cardBadge  = !ds ? (stationOffline ? undefined : (
     <span className="badge badge-offline"><span className="led" />NO DATA</span>
-  ) : hasDanger ? (
+  )) : hasDanger ? (
     <span className="badge badge-error"><span className="led led-error" />DANGER</span>
   ) : hasWarn ? (
     <span className="badge badge-warn"><span className="led led-warn led-pulse" />WARNING</span>
@@ -744,6 +752,7 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
       fanData: {
         fans: fl.fan?.fans || {},
         timestamp: fl.fan?.timestamp || '',
+        live: fl.fan?.live !== false,
       },
       scripts: [
         { name: 'fault_status', description: 'Fault status heartbeat', mqttTopic: '', lastHeartbeat: fl.scripts?.faultStatus.lastHeartbeat || '', online: !!fl.scripts?.faultStatus.online, expectedInterval: 30 },

@@ -112,7 +112,7 @@ export interface PowerModuleHead {
   prevVoltage: number;
   prevCurrent: number;
   timestamp:   string;   // timestamp per head
-  online:      boolean;  // received recently?
+  online:      boolean;  // false while the station is offline — pmCount is then only the last report
 }
 
 // ── Meter ──────────────────────────────────────────────────────────────────────
@@ -138,7 +138,8 @@ export interface TempReading {
 // Mirrors real MQTT: {"FAN 1": 5397.99, ..., "FAN 6": 0, ...}
 export interface FanSnapshot {
   fans:      Record<string, number>;  // key = "FAN 1" … "FAN 8"
-  timestamp: string;
+  timestamp: string;                  // when the last snapshot arrived
+  live?:     boolean;                 // false → station offline; `fans` is empty
 }
 
 // ── PLC ────────────────────────────────────────────────────────────────────────
@@ -185,7 +186,8 @@ export interface PlcData {
   lem1Status:     string;
   lem2Status:     string;
   fanStatus1_8:   string;   // "1" | "0"
-  timestamp:      string;
+  timestamp:      string;   // of the last payload received
+  live?:          boolean;  // false → payload is stale or the station is offline; head values are blanked
 }
 
 // ── MQTT Scripts ───────────────────────────────────────────────────────────────

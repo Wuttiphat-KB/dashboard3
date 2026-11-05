@@ -39,6 +39,7 @@ export interface FleetStation {
   fan?: {
     fans: Record<string, number>;
     timestamp: string;
+    live?: boolean;   // false → station offline; fans is empty
   };
   powerModule: {
     head: number;

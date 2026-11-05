@@ -114,6 +114,7 @@ function mapApiToDashboard(stationId: string, raw: any): StationDashboardData {
   const fanData: FanSnapshot = {
     fans: raw.fanData?.fans || {},
     timestamp: raw.fanData?.timestamp || '',
+    live: raw.fanData?.live !== false,
   };
 
   const scripts: MqttScript[] = (raw.scripts || []).length > 0
@@ -154,11 +155,13 @@ function mapApiToDashboard(stationId: string, raw: any): StationDashboardData {
     hmiStatus: 'Unknown', plc1Status: 'Unknown', plc2Status: 'Unknown',
     lem1Status: 'Unknown', lem2Status: 'Unknown', fanStatus1_8: '0',
     timestamp: plcRaw.timestamp || '',
+    live: plcRaw.live !== false,
   } : {
     head1: emptyPlcHead(1), head2: emptyPlcHead(2),
     ambientTemp: 0, ambientHum: 0, ambientPressure: 0, pi5Temp: 0,
     hmiStatus: 'Unknown', plc1Status: 'Unknown', plc2Status: 'Unknown',
     lem1Status: 'Unknown', lem2Status: 'Unknown', fanStatus1_8: '0', timestamp: '',
+    live: false,
   };
 
   return {

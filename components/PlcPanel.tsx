@@ -26,10 +26,12 @@ function chargeStateColor(s: string) {
   return { badge: 'badge-warn', led: 'led-warn', text: 'var(--warn-text)' };
 }
 
-function HeadCard({ head }: { head: PlcHeadData }) {
+function HeadCard({ head, live }: { head: PlcHeadData; live: boolean }) {
   const sc = chargeStateColor(head.chargeState);
   const isCharging = head.chargeState === 'Charging';
   const hasFault   = head.chargeState === 'Fault' || head.headError !== 0;
+  // No live payload → the API sends blank (0) values; show dashes, not 0 °C.
+  const noReading  = !live || head.chargeState === 'Offline';
 
   return (
     <div className="card" style={{ borderColor: hasFault ? 'var(--error)' : 'var(--border)' }}>
@@ -123,7 +125,7 @@ function HeadCard({ head }: { head: PlcHeadData }) {
             <div key={s.label} style={{ background: 'var(--bg-elevated)', borderRadius: 6, padding: '7px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 3 }}>{s.label}</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: s.value >= s.warn ? 'var(--warn-text)' : 'var(--text-secondary)' }}>
-                {head.chargeState === 'Offline' ? '—' : `${s.value} °C`}
+                {noReading ? '—' : `${s.value} °C`}
               </div>
             </div>
           ))}
@@ -177,10 +179,11 @@ function ComponentStatus({ label, status }: { label: string; status: string }) {
 
 export default function PlcPanel({ plcData, stationId, chargerHeads = 2 }: Props) {
   const showHead2  = chargerHeads >= 2;
+  const live       = plcData.live !== false;
   const totalPower = plcData.head1.powerKw + (showHead2 ? plcData.head2.powerKw : 0);
 
   const summaryStats = [
-    { label: 'Total Power',  value: `${totalPower} kW`,                           color: 'var(--info)'  },
+    { label: 'Total Power',  value: live ? `${totalPower} kW` : '—',              color: 'var(--info)'  },
     { label: showHead2 ? 'Head 1 State' : 'Charge State', value: plcData.head1.chargeState, color: chargeStateColor(plcData.head1.chargeState).text },
     ...(showHead2 ? [{ label: 'Head 2 State', value: plcData.head2.chargeState, color: chargeStateColor(plcData.head2.chargeState).text }] : []),
     { label: 'Ambient Temp', value: `${plcData.ambientTemp.toFixed(1)} °C`,       color: 'var(--text-secondary)' },
@@ -201,8 +204,8 @@ export default function PlcPanel({ plcData, stationId, chargerHeads = 2 }: Props
 
       {/* Head cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem' }}>
-        <HeadCard head={plcData.head1} />
-        {showHead2 && <HeadCard head={plcData.head2} />}
+        <HeadCard head={plcData.head1} live={live} />
+        {showHead2 && <HeadCard head={plcData.head2} live={live} />}
       </div>
 
       {/* System component status */}

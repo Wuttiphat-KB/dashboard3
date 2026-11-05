@@ -126,14 +126,15 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
               value: `${data.heartbeats.filter(h => h.online).length}/${data.heartbeats.length}`,
               ok: data.heartbeats.every(h => h.online),
             },
+            // Offline → unknown; the PM data on hand is only the last report.
             {
               label: 'Active PM',
-              value: `${pmTotal} modules`,
+              value: status === 'offline' ? '—' : `${pmTotal} modules`,
               ok: pmTotal > 0 || status === 'offline',
             },
             {
               label: 'Total Power',
-              value: `${pmPower.toFixed(1)} kW`,
+              value: status === 'offline' ? '—' : `${pmPower.toFixed(1)} kW`,
               ok: true,
             },
             {
@@ -148,8 +149,9 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
             }] : []),
             {
               label: 'Fans',
-              value: `${fanCount}/${fanTotal}`,
-              ok: fanCount === fanTotal,
+              // Offline → no current readings (the API sends none).
+              value: status === 'offline' ? '—' : `${fanCount}/${fanTotal}`,
+              ok: status === 'offline' || fanCount === fanTotal,
             },
             {
               label: 'Scripts',

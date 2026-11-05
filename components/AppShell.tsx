@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import Sidebar from './Sidebar';
 import { useWebSocket, WsMessage } from '@/lib/hooks/useWebSocket';
-import { invalidateFleet, invalidateDashboard } from '@/lib/hooks/dataCache';
+import { invalidateFleet, invalidateDashboard, invalidateCharging } from '@/lib/hooks/dataCache';
 
 const SIDEBAR_W     = 220;
 const SIDEBAR_W_COL = 52;
@@ -50,6 +50,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       invalidateFleet();
       if (msg.stationId) invalidateDashboard(msg.stationId);
     }
+    // Charging page (no-op unless it's open): new PLC values or a station going offline.
+    if (msg.type === 'plc' || msg.type === 'heartbeat') invalidateCharging();
   }, []);
   useWebSocket(onWsMessage);
 

@@ -3,6 +3,7 @@ import { getMongoClient } from '@/lib/mongoClient';
 import { getRequestSession, visibleStationIds } from '@/lib/authorization';
 import { cachedResponse } from '@/lib/apiCache';
 import { loadStations } from '@/lib/stationRepository';
+import { stationStatus, stalePlcState } from '@/lib/liveData';
 
 const STATION_DB = 'Station';
 
@@ -149,6 +150,12 @@ async function buildDashboard(id: string) {
       : (routerDocs[0]?.payload?.timestamp || null);
     const rtOnline = computeOnline(rtTimestamp);
 
+    // Station status — same rule as /api/fleet and the station page header.
+    // Decides whether the cached PM / PLC values below can be shown as live.
+    const hasPi5 = stationConfig.hasPi5 !== false;  // default true
+    const status = stationStatus(hasPi5 ? [hbOnline, pi5Online, rtOnline] : [hbOnline, rtOnline]);
+    const stationOffline = status === 'offline';
+
     // 4. Parse meter — extract from payload field
     const meterHistory = meterDocs.reverse().map((doc: any) => {
       const p = doc.payload || doc;
@@ -161,7 +168,9 @@ async function buildDashboard(id: string) {
       };
     });
 
-    // 5. Parse power module — latest doc fetched per head
+    // 5. Parse power module — latest doc fetched per head. That doc is the last
+    // report ever received, so a head only counts as active while the station
+    // is reachable (pmCount stays as the last known value).
     const pmByHead: Record<number, any> = {};
     for (const [head, doc] of [[1, pm1Doc], [2, pm2Doc]] as const) {
       if (!doc) continue;
@@ -175,7 +184,7 @@ async function buildDashboard(id: string) {
         prevVoltage: Number(p[`Prevoltage${head}`]) || 0,
         prevCurrent: Number(p[`Precurrent${head}`]) || 0,
         timestamp:   p[`timestamp${head}`] || p.timestamp || '',
-        online:      true,
+        online:      !stationOffline,
       };
     }
     const powerModuleHeads = [1, 2].map(h => pmByHead[h] || {
@@ -185,15 +194,26 @@ async function buildDashboard(id: string) {
 
     // 6. Router parsing handled above with live status
 
-    // 7. Parse PLC — prefer live data from backend MQTT cache
+    // 7. Parse PLC — prefer live data from backend MQTT cache.
+    // Both sources hold the LAST payload received and nothing clears them, so a
+    // cabinet that dropped offline mid-charge would keep reporting "Charging".
+    // The payload is used only while it is live; otherwise each head reads
+    // 'Offline' (station offline) or 'Unknown' (PLC data stopped) with blank
+    // values, and `timestamp` still tells when the last payload was sent.
+    const lastPlc = plcLive?.payload || plcDoc;
+    const plcStale = plcLive
+      ? stalePlcState(status, plcLive.updatedAt)
+      // History fallback (no backend cache entry) has no receive time, so only
+      // the offline rule can be applied to it.
+      : stationOffline ? 'Offline' : null;
     let plcData = null;
-    const plcSource = plcLive?.payload || plcDoc;
-    if (plcSource) {
-      const p = plcSource;
+    if (lastPlc || plcStale) {
+      const p = plcStale ? {} : lastPlc;
       plcData = {
+        live: !plcStale,
         head1: {
           head: 1,
-          chargeState:     String(p['chargeState1'] ?? p['H1 chargeState'] ?? 'Unknown'),
+          chargeState:     plcStale ?? String(p['chargeState1'] ?? p['H1 chargeState'] ?? 'Unknown'),
           soc:             Number(p['SOC1'] ?? p['H1 SOC'] ?? 0),
           powerKw:         Number(p['powerKw1'] ?? p['H1 powerKw'] ?? 0),
           presentVoltage:  Number(p['presentVoltage1'] ?? 0),
@@ -208,7 +228,7 @@ async function buildDashboard(id: string) {
         },
         head2: {
           head: 2,
-          chargeState:     String(p['chargeState2'] ?? p['H2 chargeState'] ?? 'Unknown'),
+          chargeState:     plcStale ?? String(p['chargeState2'] ?? p['H2 chargeState'] ?? 'Unknown'),
           soc:             Number(p['SOC2'] ?? p['H2 SOC'] ?? 0),
           powerKw:         Number(p['powerKw2'] ?? p['H2 powerKw'] ?? 0),
           presentVoltage:  Number(p['presentVoltage2'] ?? 0),
@@ -221,7 +241,7 @@ async function buildDashboard(id: string) {
           errorMessage:    String(p['errorMessage2'] ?? ''),
           activeMld:       Number(p['activeMld2'] ?? 0),
         },
-        timestamp: p.timestamp || '',
+        timestamp: lastPlc?.timestamp || '',
       };
     }
 
@@ -273,9 +293,12 @@ async function buildDashboard(id: string) {
         ip:       Array.isArray(routerLive?.ip) ? routerLive.ip : [],
       },
       plcData,
+      // Last fan snapshot, never cleared — no readings while the station is
+      // offline (same rule as /api/fleet); timestamp = when it last arrived.
       fanData: {
-        fans: (fanLive as any)?.fans || {},
+        fans: stationOffline ? {} : (fanLive as any)?.fans || {},
         timestamp: tsToString((fanLive as any)?.updatedAt) || '',
+        live: !stationOffline,
       },
       scripts: [
         {

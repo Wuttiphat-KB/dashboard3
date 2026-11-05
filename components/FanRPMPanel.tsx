@@ -1,7 +1,7 @@
 'use client';
 
 import { FanSnapshot } from '@/lib/types';
-import { fmtTime } from '@/lib/formatTime';
+import { fmtTime, fmtTs, timeSince } from '@/lib/formatTime';
 
 interface Props {
   fanData: FanSnapshot;
@@ -71,6 +71,21 @@ function FanCard({ name, rpm }: { name: string; rpm: number }) {
 }
 
 export default function FanRPMPanel({ fanData, stationId }: Props) {
+  // Station offline → the API sends no readings; the last snapshot isn't current.
+  if (fanData.live === false) {
+    return (
+      <div className="card" style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-muted)' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>
+          No live fan data — station offline
+        </div>
+        <div style={{ fontSize: 11, fontFamily: 'monospace' }}>
+          {stationId} · MQTT: fanRPM · Last update {fmtTs(fanData.timestamp)}
+          {fanData.timestamp && ` (${timeSince(fanData.timestamp)})`}
+        </div>
+      </div>
+    );
+  }
+
   const entries     = Object.entries(fanData.fans).sort((a, b) => {
     const n1 = parseInt(a[0].replace('FAN ', ''));
     const n2 = parseInt(b[0].replace('FAN ', ''));

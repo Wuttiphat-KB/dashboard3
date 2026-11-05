@@ -5,6 +5,7 @@
  */
 
 import { Station } from '@/lib/types';
+import type { ChargingStation } from '@/lib/charging';
 import { FleetStation } from './useFleet';
 
 interface CacheEntry<T> {
@@ -24,6 +25,7 @@ function makeCache<T>(): CacheEntry<T> {
 
 const stationsCache = makeCache<Station[]>();
 const fleetCache    = makeCache<FleetStation[]>();
+const chargingCache = makeCache<ChargingStation[]>();
 const dashboardCache = new Map<string, CacheEntry<any>>();
 
 function notify<T>(c: CacheEntry<T>) {
@@ -92,9 +94,11 @@ async function fetchAndCache<T>(c: CacheEntry<T>, url: string): Promise<T> {
 const FLEET_THROTTLE_MS     = 10_000;
 const DASHBOARD_THROTTLE_MS = 4_000;
 const STATIONS_THROTTLE_MS  = 60_000;   // station configs change only on save
-const lastInvalidate: { fleet: number; stations: number; dashboard: Map<string, number> } = {
+const CHARGING_THROTTLE_MS  = 5_000;    // matches /api/charging's 5s server cache
+const lastInvalidate: { fleet: number; stations: number; charging: number; dashboard: Map<string, number> } = {
   fleet: 0,
   stations: 0,
+  charging: 0,
   dashboard: new Map(),
 };
 
@@ -115,6 +119,16 @@ export function invalidateDashboard(stationId: string): void {
   if (!c) return;
   c.timestamp = 0;
   fetchAndCache<any>(c, `/api/dashboard/${stationId}`).catch(() => {});
+}
+
+export function invalidateCharging(): void {
+  // Only while the Charging page is mounted — no other page needs this data.
+  if (chargingCache.subscribers.size === 0) return;
+  const now = Date.now();
+  if (now - lastInvalidate.charging < CHARGING_THROTTLE_MS) return;
+  lastInvalidate.charging = now;
+  chargingCache.timestamp = 0;
+  fetchAndCache<ChargingStation[]>(chargingCache, '/api/charging').catch(() => {});
 }
 
 export function invalidateStations(): void {
@@ -143,6 +157,15 @@ export function getFleet() {
   const isStale = Date.now() - c.timestamp > STALE_MS;
   if (!c.data || isStale) {
     fetchAndCache<FleetStation[]>(c, '/api/fleet').catch(() => {});
+  }
+  return c;
+}
+
+export function getCharging() {
+  const c = chargingCache;
+  const isStale = Date.now() - c.timestamp > STALE_MS;
+  if (!c.data || isStale) {
+    fetchAndCache<ChargingStation[]>(c, '/api/charging').catch(() => {});
   }
   return c;
 }

@@ -4,6 +4,7 @@ import { getMongoClient } from '@/lib/mongoClient';
 import { getFleetCache } from '@/lib/fleetCache';
 import { getRequestSession, visibleStationIds } from '@/lib/authorization';
 import { cachedResponse } from '@/lib/apiCache';
+import { stationStatus, stalePlcState } from '@/lib/liveData';
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
@@ -224,6 +225,13 @@ async function buildFleet(): Promise<any[]> {
       const rtOnline  = computeOnline(rtTs);
       const pi5Online = computeOnline(pi5Ts);
 
+      // Station status — exclude Pi5 if station has no Pi5 device. Worked out
+      // first because it decides whether the cached PLC / PM values below can
+      // still be shown as live.
+      const hasPi5 = st.hasPi5 !== false;  // default true
+      const status = stationStatus(hasPi5 ? [hbOnline, pi5Online, rtOnline] : [hbOnline, rtOnline]);
+      const stationOffline = status === 'offline';
+
       // Meter — from _meter_latest cache (backend keeps it warm)
       const meterDoc = meterByStation.get(st.id);
       const mp = meterDoc || {};
@@ -238,7 +246,10 @@ async function buildFleet(): Promise<any[]> {
       const stalled1 = m1ChangedTs > 0 && (now - m1ChangedTs) > STALL_MS;
       const stalled2 = numHeads >= 2 && m2ChangedTs > 0 && (now - m2ChangedTs) > STALL_MS;
 
-      // Power Module — from _pm_data cache
+      // Power Module — from _pm_data cache. The cache keeps each head's last
+      // report forever, so it only counts as active while the station is
+      // reachable; pmCount stays as the last known value. (Not age-based: some
+      // stations send PM1/PM2 only every few hours.)
       const pmDoc = pmByStation.get(st.id);
       const pmHeads: Record<number, any> = {};
       for (const h of [1, 2] as const) {
@@ -251,15 +262,20 @@ async function buildFleet(): Promise<any[]> {
             current: head.current || 0,
             powerKw: head.powerKw || 0,
             timestamp: head.timestamp || '',
-            online: true,
+            online: !stationOffline,
           };
         }
       }
 
-      // PLC — from _plc_data cache
-      const plcSource = (plcByStation.get(st.id) as any)?.payload;
+      // PLC — from _plc_data cache. It holds the LAST payload received and is
+      // never cleared, so a cabinet that went offline mid-charge would keep
+      // showing "Charging". Use it only while it is live; otherwise every head
+      // reads 'Offline' (station offline) or 'Unknown' (PLC data stopped).
+      const plcDoc = plcByStation.get(st.id) as any;
+      const plcStale = stalePlcState(status, plcDoc?.updatedAt, now);
+      const plcSource = plcStale ? undefined : plcDoc?.payload;
       const plcHeads = [1, 2].map(h => {
-        if (!plcSource) return { head: h, chargeState: 'Unknown', powerKw: 0, soc: 0 };
+        if (!plcSource) return { head: h, chargeState: plcStale ?? 'Unknown', powerKw: 0, soc: 0 };
         return {
           head: h,
           chargeState: String(plcSource[`chargeState${h}`] ?? plcSource[`H${h} chargeState`] ?? 'Unknown'),
@@ -270,7 +286,9 @@ async function buildFleet(): Promise<any[]> {
 
       // Device-status snapshot — used by the /overview/device monitor page.
       // String statuses ("Active" / "Inactive" / "Unknown") and per-head cable
-      // terminal temperatures pulled straight from the PLC payload.
+      // terminal temperatures pulled straight from the PLC payload. Omitted when
+      // there is no live payload, so the page shows NO DATA instead of stale
+      // statuses and temperatures.
       const devStatus = (key: string): string => {
         if (!plcSource) return 'Unknown';
         const v = plcSource[key];
@@ -286,7 +304,7 @@ async function buildFleet(): Promise<any[]> {
       const imdRaw           = plcSource?.IMD_status;
       const emergencyActive  = plcSource?.emergencyActive === true;
       const tempSensorFaults = Array.isArray(plcSource?.tempSensorFaults) ? plcSource.tempSensorFaults : [];
-      const deviceStatus = {
+      const deviceStatus = plcSource ? {
         hmi:  devStatus('HMI_status'),
         plc1: devStatus('PLC1_status'),
         plc2: devStatus('PLC2_status'),
@@ -295,23 +313,21 @@ async function buildFleet(): Promise<any[]> {
         tempSensorFaults,
         head1: { tempPos: devTemp('temp1Head1'), tempNeg: devTemp('temp2Head1') },
         head2: { tempPos: devTemp('temp1Head2'), tempNeg: devTemp('temp2Head2') },
-      };
+      } : undefined;
 
       const routerData = routerByStation.get(st.id);
+      // Fan RPM — the last snapshot received, never cleared, so an offline
+      // station would keep showing its fans spinning. No readings while offline;
+      // the timestamp still says when the last snapshot arrived. (Offline rule
+      // only: fan snapshots aren't confirmed to be sent on a fixed interval.)
       const fanDoc = fanByStation.get(st.id);
-      const fans = (fanDoc as any)?.fans || {};
+      const fans = stationOffline ? {} : (fanDoc as any)?.fans || {};
       const fanTimestamp = tsToIso((fanDoc as any)?.updatedAt) || '';
 
       const stScripts = scriptsByStation.get(st.id) || [];
       const scriptFault = stScripts.find((s: any) => s.script === 'fault_status');
       const scriptPlc   = stScripts.find((s: any) => s.script === 'plc');
       const scriptOnline = (s: any) => computeOnline(tsToIso(s?.lastSeen));
-
-      // Compute status — exclude Pi5 if station has no Pi5 device
-      const hasPi5 = st.hasPi5 !== false;  // default true
-      const devices = hasPi5 ? [hbOnline, pi5Online, rtOnline] : [hbOnline, rtOnline];
-      const onlineCount = devices.filter(Boolean).length;
-      const status = onlineCount === 0 ? 'offline' : onlineCount === devices.length ? 'online' : 'degraded';
 
       return {
         station: {
@@ -349,6 +365,7 @@ async function buildFleet(): Promise<any[]> {
         fan: {
           fans,                          // { "FAN 1": 4507.99, "FAN 2": ..., ... }
           timestamp: fanTimestamp,
+          live: !stationOffline,
         },
         powerModule: [1, 2].map(h => pmHeads[h] || { head: h, pmCount: 0, voltage: 0, current: 0, powerKw: 0, timestamp: '', online: false }),
         plcHeads,
@@ -370,10 +387,11 @@ async function buildFleet(): Promise<any[]> {
     const pmFallbackTargets: Array<{ stationId: string; col: string; needH1: boolean; needH2: boolean }> = [];
     for (const r of results) {
       const numHeads = r.station.chargerHeads || 2;
-      const h1 = r.powerModule.find((h: any) => h.head === 1);
-      const h2 = r.powerModule.find((h: any) => h.head === 2);
-      const needH1 = !h1?.online;
-      const needH2 = numHeads >= 2 && !h2?.online;
+      // Only heads missing from the cache. (Not `!online`: an offline station's
+      // cached heads are reported as inactive, but there is nothing to fetch.)
+      const pmDoc = pmByStation.get(r.station.id) as any;
+      const needH1 = !pmDoc?.head1;
+      const needH2 = numHeads >= 2 && !pmDoc?.head2;
       if (!needH1 && !needH2) continue;
       const st = stationById.get(r.station.id);
       if (!st) continue;
@@ -432,8 +450,11 @@ async function buildFleet(): Promise<any[]> {
           ]);
           const r = resultById.get(stationId);
           if (!r) return;
-          for (const head of [head1, head2]) {
-            if (!head) continue;
+          for (const found of [head1, head2]) {
+            if (!found) continue;
+            // Same rule as cached heads: last known count, active only while
+            // the station is reachable. Copy — `found` is shared via the memo.
+            const head = { ...found, online: r.status !== 'offline' };
             const idx = r.powerModule.findIndex((x: any) => x.head === head.head);
             if (idx >= 0) r.powerModule[idx] = head;
             else r.powerModule.push(head);

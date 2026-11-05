@@ -56,7 +56,8 @@ function StationCard({ item }: { item: FleetStation }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 10 }}>
           {[
             { label: 'Heartbeats', value: `${hbOnline}/${hbTotal}`, ok: hbOnline === hbTotal },
-            { label: 'Active PM',  value: `${pmTotal} mod`,          ok: pmTotal > 0 || status === 'offline' },
+            // Offline → module count unknown (the API keeps only the last report).
+            { label: 'Active PM',  value: status === 'offline' ? '—' : `${pmTotal} mod`, ok: pmTotal > 0 || status === 'offline' },
           ].map(m => (
             <div key={m.label} style={{ background: 'var(--bg-elevated)', borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: m.ok ? 'var(--text-primary)' : 'var(--warn-text)' }}>
