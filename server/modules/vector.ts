@@ -21,9 +21,6 @@
 
 import { onMessage } from '../mqtt';
 import { getStationDb, getDbByName } from '../mongo';
-import { getState } from '../state';
-import { broadcast } from '../ws';
-import { syncScriptStatus } from './scriptHb';
 
 const PM_DB       = 'PowerModule';
 const STATEPLC_DB = 'StatePLC';
@@ -155,7 +152,7 @@ async function syncPlcDataFromVector(stationId: string, vp: any): Promise<void> 
     // doesn't separate PLC1/PLC2 — proxy from power_module.status.
     HMI_status:  'N/A',  // Vector has no HMI status — user should set hmiBrand:DWIN
     PLC1_status: pmActive,
-    PLC2_status: pm?.status2 != null ? (pm.status2 === 'operative' ? 'Active' : 'Inactive') : pmActive,
+    PLC2_status: pmActive,
     IMD_status:  imdActive,     // Vector-only — DeviceStatusCard renders this when present
 
     // Safety extensions — Vector-only fields, ignored by the Phoenix UI path.
@@ -172,8 +169,8 @@ async function syncPlcDataFromVector(stationId: string, vp: any): Promise<void> 
       { $set: { stationId, payload, updatedAt: new Date() } },
       { upsert: true },
     );
-  } catch (err: any) {
-    console.error(`[vector] _plc_data write failed (${stationId}):`, err.message);
+  } catch {
+    // non-fatal
   }
 }
 
@@ -365,75 +362,10 @@ async function forwardStatePlc(stationId: string, vp: any, plcPayload: any): Pro
   }
 }
 
-// ── Live state + WebSocket push ────────────────────────────────────────
-
-const lastScriptSyncAt = new Map<string, number>();
-const SCRIPT_SYNC_THROTTLE_MS = 5_000;
-
-/** Phoenix-shape PowerModule payload (same keys the WS/dashboard readers expect). */
-function buildPmPayload(vp: any): any {
-  const grp = vp?.power_module?.modules?.per_group || {};
-  const g1 = grp['1'] || {};
-  const g2 = grp['2'] || {};
-  const v1 = num(g1.voltage), i1 = num(g1.current);
-  const v2 = num(g2.voltage), i2 = num(g2.current);
-  const iso = nowPhoenixIso();
-  return {
-    PM1: String(num(g1.online)), PM2: String(num(g2.online)),
-    Voltage1: v1, Voltage2: v2, Current1: i1, Current2: i2,
-    Power1: v1 * i1, Power2: v2 * i2,
-    timestamp1: iso, timestamp2: iso, timestamp: iso,
-  };
-}
-
-/**
- * Mirror what the Phoenix handlers do on every message so Vector stations
- * behave the same on the dashboard: update in-memory state, mark the `plc` /
- * `fault_status` script heartbeats alive (Vector has no separate topics for
- * them — vectorState arrival is the proxy), and push to WebSocket clients.
- */
-function publishVectorLive(stationId: string, plcPayload: any, vp: any): void {
-  const state = getState(stationId);
-  const nowMs = Date.now();
-
-  state.plc = plcPayload;
-  state.chargeHead1 = { chargeState: String(plcPayload.chargeState1 ?? 'Unknown'), powerKw: Number(plcPayload.powerKw1 ?? 0), soc: Number(plcPayload.SOC1 ?? 0) };
-  state.chargeHead2 = { chargeState: String(plcPayload.chargeState2 ?? 'Unknown'), powerKw: Number(plcPayload.powerKw2 ?? 0), soc: Number(plcPayload.SOC2 ?? 0) };
-
-  // checkScriptTimeouts() watches these, so offline detection works unchanged.
-  for (const dev of [state.plcScriptHb, state.faultStatusHb]) {
-    dev.online = true;
-    dev.lastSeen = nowMs;
-    dev.payload = plcPayload;
-  }
-
-  const pmPayload = buildPmPayload(vp);
-  state.powerModule = pmPayload;
-
-  broadcast('plc', stationId, plcPayload);
-  broadcast('powerModule', stationId, pmPayload);
-
-  if (nowMs - (lastScriptSyncAt.get(stationId) ?? 0) >= SCRIPT_SYNC_THROTTLE_MS) {
-    lastScriptSyncAt.set(stationId, nowMs);
-    const lastSeen = new Date(nowMs).toISOString();
-    for (const script of ['plc', 'fault_status'] as const) {
-      syncScriptStatus(stationId, script, true, nowMs);
-      broadcast('scriptHb', stationId, { script, online: true, lastSeen });
-    }
-  }
-}
-
 // ── Entry point ───────────────────────────────────────────────────────
 
-const lastRxLogAt = new Map<string, number>();
-
 export function initVectorHandler(): void {
-  onMessage('vectorState', (stationId, topic, payload) => {
-    const nowMs = Date.now();
-    if (nowMs - (lastRxLogAt.get(stationId) ?? 0) >= 60_000) {
-      lastRxLogAt.set(stationId, nowMs);
-      console.log(`[vector] rx ${stationId} ← ${topic}${payload && typeof payload === 'object' ? '' : ' (NOT JSON object, ignored)'}`);
-    }
+  onMessage('vectorState', (stationId, _topic, payload) => {
     if (!payload || typeof payload !== 'object') return;
     const vp: any = payload;
 
@@ -467,15 +399,12 @@ export function initVectorHandler(): void {
       errorMessage2: cleanErrCode(c2.err_code),
       HMI_status:  'N/A',
       PLC1_status: pmActive,
-      PLC2_status: pm?.status2 != null ? (pm.status2 === 'operative' ? 'Active' : 'Inactive') : pmActive,
+      PLC2_status: pmActive,
       IMD_status:  imdActive,
       emergencyActive,
       tempSensorFaults,
       timestamp: nowPhoenixIso(),
     };
-
-    // Live in-memory state + WebSocket push + script heartbeats.
-    publishVectorLive(stationId, plcPayloadForStatePlc, vp);
 
     // Caches in Station DB — read by /api/fleet + /api/dashboard.
     syncPlcDataFromVector(stationId, vp);
