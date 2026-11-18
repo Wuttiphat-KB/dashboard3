@@ -172,8 +172,8 @@ async function syncPlcDataFromVector(stationId: string, vp: any): Promise<void> 
       { $set: { stationId, payload, updatedAt: new Date() } },
       { upsert: true },
     );
-  } catch {
-    // non-fatal
+  } catch (err: any) {
+    console.error(`[vector] _plc_data write failed (${stationId}):`, err.message);
   }
 }
 
@@ -425,8 +425,15 @@ function publishVectorLive(stationId: string, plcPayload: any, vp: any): void {
 
 // ── Entry point ───────────────────────────────────────────────────────
 
+const lastRxLogAt = new Map<string, number>();
+
 export function initVectorHandler(): void {
-  onMessage('vectorState', (stationId, _topic, payload) => {
+  onMessage('vectorState', (stationId, topic, payload) => {
+    const nowMs = Date.now();
+    if (nowMs - (lastRxLogAt.get(stationId) ?? 0) >= 60_000) {
+      lastRxLogAt.set(stationId, nowMs);
+      console.log(`[vector] rx ${stationId} ← ${topic}${payload && typeof payload === 'object' ? '' : ' (NOT JSON object, ignored)'}`);
+    }
     if (!payload || typeof payload !== 'object') return;
     const vp: any = payload;
 
