@@ -22,7 +22,7 @@ export function registerStatePlcCollection(stationId: string, collectionName: st
 }
 
 /** Persist script status to MongoDB so API can read it */
-async function syncScriptStatus(stationId: string, script: string, online: boolean, lastSeen: number): Promise<void> {
+export async function syncScriptStatus(stationId: string, script: string, online: boolean, lastSeen: number): Promise<void> {
   try {
     const db = getStationDb();
     await db.collection('_script_status').updateOne(

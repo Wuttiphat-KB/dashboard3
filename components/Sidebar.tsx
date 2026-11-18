@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useSessionAccess } from './SessionProvider';
+import { OPS_VIEWS } from '@/lib/ops/views';
 
 const SIDEBAR_W     = 220;
 const SIDEBAR_W_COL = 52;
@@ -45,9 +47,9 @@ interface Props {
   onToggleTheme: () => void;
 }
 
-function NavLink({ href, label, abbr, isActive, onClick, collapsed }: {
+function NavLink({ href, label, abbr, isActive, onClick, collapsed, badge }: {
   href: string; label: string; abbr: string;
-  isActive: boolean; onClick: () => void; collapsed: boolean;
+  isActive: boolean; onClick: () => void; collapsed: boolean; badge?: number;
 }) {
   if (collapsed) {
     return (
@@ -104,6 +106,7 @@ function NavLink({ href, label, abbr, isActive, onClick, collapsed }: {
         transition: 'background 0.15s',
       }} />
       {label}
+      {badge ? <span className="badge badge-error" style={{ marginLeft: 'auto', fontSize: 10, padding: '0 6px' }}>{badge}</span> : null}
     </Link>
   );
 }
@@ -111,6 +114,12 @@ function NavLink({ href, label, abbr, isActive, onClick, collapsed }: {
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, theme, onToggleTheme }: Props) {
   const pathname = usePathname();
   const { canEdit, username, role, customer } = useSessionAccess();
+  const [opsCounts, setOpsCounts] = useState<{ alerts: number; tickets: number }>({ alerts: 0, tickets: 0 });
+  useEffect(() => {
+    const h = (e: Event) => setOpsCounts((e as CustomEvent).detail);
+    window.addEventListener('ops-counts', h);
+    return () => window.removeEventListener('ops-counts', h);
+  }, []);
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -271,6 +280,30 @@ export default function Sidebar({ open, onClose, collapsed, onToggleCollapse, th
               collapsed={collapsed}
             />
           ))}
+          {/* Divider */}
+          <div style={{ height: 1, background: 'var(--border-subtle)', margin: collapsed ? '8px 6px' : '10px 4px' }} />
+
+          {/* Ops console (Charger Ops) */}
+          {(['See', 'Diagnose', 'Act'] as const).map(group => (
+            <div key={group}>
+              {!collapsed && (
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', padding: '4px 12px 6px', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
+                  Ops · {group}
+                </div>
+              )}
+              {OPS_VIEWS.filter(v => v.group === group).map(v => (
+                <NavLink
+                  key={v.id}
+                  href={`/ops/${v.id}`} label={v.label} abbr={v.abbr}
+                  isActive={isActive(`/ops/${v.id}`)}
+                  onClick={onClose}
+                  collapsed={collapsed}
+                  badge={v.id === 'alerts' ? opsCounts.alerts : v.id === 'tickets' ? opsCounts.tickets : undefined}
+                />
+              ))}
+            </div>
+          ))}
+
         </nav>
 
         {/* Footer */}
