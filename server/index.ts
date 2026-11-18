@@ -280,7 +280,6 @@ function registerStationConfig(station: StationConfig): void {
   };
   if (isVector) {
     topics.vectorState = mqttTopics.vectorState || '';
-    console.log(`[vector] registered ${station.id} · topic: ${topics.vectorState || '(EMPTY — nothing will be received)'}`);
   } else {
     topics.powerModule = mqttTopics.powerModule || '';
     topics.faultStatus = mqttTopics.faultStatus || '';
