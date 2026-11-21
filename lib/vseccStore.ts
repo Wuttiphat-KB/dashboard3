@@ -29,6 +29,8 @@
  *   VSECC_COLLECT_FILES=<regex>     only collect log names matching this (default: all)
  *   VSECC_OFFLINE_MAX_MIN=30        longest wait before retrying an offline station
  *   VSECC_PROBE_MINUTES=30          how often addresses that never answered are tried again
+ *   VSECC_INFO_REFRESH_MIN=10       how often firmware / model / serial (GET /information) is re-read;
+ *                                   ↻ Refresh in the panel always re-reads it
  */
 
 import { promises as fs, createReadStream } from 'fs';
@@ -38,6 +40,7 @@ import { getMongoClient } from './mongoClient';
 import { loadStations } from './stationRepository';
 import { vseccBaseCandidates, vseccGet, vseccConfigured, isSafeLogName, VseccError } from './vsecc';
 import { isNetworkId, withStationNetwork, cabinetOnline } from './zerotier';
+import { sanitizeInformation, firmwareOf, type InfoFields, type InfoSource } from './vseccInfo';
 
 const SEED_BYTES   = 1_500_000;   // first contact / after rotation: keep only the end of the file
 const MAX_CHUNK    = 5_000_000;   // catch-up per visit; the rest comes on the next visit
@@ -47,6 +50,7 @@ const READ_BYTES   = 1_500_000;   // per day-file, when building the viewer tail
 const intervalMs    = () => Math.max(5, Number(process.env.VSECC_COLLECT_INTERVAL_SEC) || 30) * 1000;
 const retentionDays = () => Math.max(1, Number(process.env.VSECC_LOG_RETENTION_DAYS) || 7);
 const probeMs       = () => Math.max(1, Number(process.env.VSECC_PROBE_MINUTES) || 30) * 60_000;
+const infoRefreshMs = () => Math.max(1, Number(process.env.VSECC_INFO_REFRESH_MIN) || 10) * 60_000;
 
 // ── Folders ──────────────────────────────────────────────────────────────
 function configuredRoot(): string {
@@ -107,6 +111,10 @@ export interface ControllerState {
   remoteFiles?: string[];
   lastOkAt?: string | null;
   lastError?: string | null;
+  info?: InfoFields | null;       // GET /information (firmwareVersion, model, serial …) — last good answer
+  infoAt?: string | null;         // when `info` was read
+  infoTriedAt?: string | null;    // last attempt, good or bad — a failing read is retried only every VSECC_INFO_REFRESH_MIN
+  infoError?: string | null;      // why the last attempt failed (e.g. an old firmware without this endpoint)
 }
 export interface StationState {
   controllers: Record<string, ControllerState>;
@@ -221,6 +229,25 @@ async function pullFile(get: Getter, dirOut: string, name: string, prev: FileSta
     st: { offset: dataStart + commit.length, tail: tail.subarray(Math.max(0, tail.length - OVERLAP)).toString('base64') },
     stored: commit.length,
   };
+}
+
+// ── vSECC information (firmware version …) ──────────────────────────────
+/**
+ * Read GET /information into `ctrl` when it is due (or `force`). Never throws: a vSECC whose firmware has no
+ * such endpoint, or a hiccup on this one request, must not stop the log collection. The last good answer is kept.
+ */
+async function refreshInfo(get: Getter, ctrl: ControllerState, force: boolean): Promise<void> {
+  if (!force && ctrl.infoTriedAt && Date.now() - new Date(ctrl.infoTriedAt).getTime() < infoRefreshMs()) return;
+  ctrl.infoTriedAt = new Date().toISOString();
+  try {
+    const fields = sanitizeInformation(await (await get('/information', 10_000, {}, [])).json());
+    if (!fields) throw new Error('/information did not return a JSON object');
+    ctrl.info = fields;
+    ctrl.infoAt = ctrl.infoTriedAt;
+    ctrl.infoError = null;
+  } catch (err) {
+    ctrl.infoError = err instanceof Error ? err.message : String(err);
+  }
 }
 
 // ── Station access ───────────────────────────────────────────────────────
@@ -355,6 +382,7 @@ export function collectStation(st: any, allStations: any[], opts: { probeAll?: b
             const ctrl: ControllerState = state.controllers[key] ||= { baseUrl: base, files: {} };
             const files: string[] = (Array.isArray(list) ? list : []).filter((n: any) => typeof n === 'string' && isSafeLogName(n));
             ctrl.remoteFiles = files;
+            await refreshInfo(get, ctrl, !!opts.force);
             const want = fileFilter();
             for (const name of files.filter(want)) {
               const r = await pullFile(get, ctrlDir(id, key), name, ctrl.files[name]);
@@ -478,7 +506,7 @@ export async function storedState(id: string): Promise<StationState | null> {
   return readState(id);
 }
 
-export interface ControllerInfo { key: string; label: string; lastOkAt: string | null; lastError: string | null }
+export interface ControllerInfo extends InfoSource { key: string; label: string; lastOkAt: string | null; lastError: string | null }
 
 /** vSECCs known for a station (answered at least once, or have stored logs), sorted by address. */
 export async function storedControllers(id: string): Promise<ControllerInfo[]> {
@@ -492,6 +520,9 @@ export async function storedControllers(id: string): Promise<ControllerInfo[]> {
     label: k,
     lastOkAt: state?.controllers[k]?.lastOkAt ?? null,
     lastError: state?.controllers[k]?.lastError ?? null,
+    info: state?.controllers[k]?.info ?? null,
+    infoAt: state?.controllers[k]?.infoAt ?? null,
+    infoError: state?.controllers[k]?.infoError ?? null,
   }));
 }
 
@@ -589,6 +620,7 @@ export async function collectorOverview(stations: any[]) {
       lastError: state?.lastError || null,
       nextTryAt: state?.lastError ? state?.nextTryAt || null : null,
       vseccs: Object.entries(state?.controllers || {}).filter(([, c]) => c.lastOkAt).map(([k]) => k),
+      firmware: Object.entries(state?.controllers || {}).filter(([, c]) => c.lastOkAt).map(([k, c]) => ({ key: k, version: firmwareOf(c.info) })),
     });
   }
   return { collector: { ...collectorStatus(), logDir: logRoot() }, rows };

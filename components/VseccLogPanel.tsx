@@ -7,6 +7,13 @@ interface Props {
   stationId: string;
 }
 
+interface CtrlInfo {
+  key: string; label: string; lastOkAt: string | null; offline: boolean;
+  firmwareVersion?: string | null; model?: string | null; infoAt?: string | null;
+  info?: Record<string, string | number | boolean | null>;   // admins only
+  infoError?: string | null;                                  // admins only
+}
+
 interface LogView {
   name: string;
   totalLines: number | null;   // null when only the end of the file was fetched
@@ -14,7 +21,7 @@ interface LogView {
   partial?: boolean;
   timing?: { network: number; charger: number; bytes: number; cached: boolean; totalMs: number };
   fetchedAt?: string | null;
-  controllers?: { key: string; label: string; lastOkAt: string | null; offline: boolean }[];
+  controllers?: CtrlInfo[];
   controller?: string;
   collector?: {
     running: boolean; intervalSec: number; retentionDays: number; stations: number; offline?: number; lastCycleMs: number | null;
@@ -181,6 +188,8 @@ export default function VseccLogPanel({ stationId }: Props) {
 
   const label = { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' };
 
+  const curCtrl = view?.controllers?.find(c => c.key === view?.controller);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {/* Controls */}
@@ -202,7 +211,7 @@ export default function VseccLogPanel({ stationId }: Props) {
               <select className="input" value={view?.controller || ''} onChange={e => setReqCtrl(e.target.value)}
                 style={{ padding: '4px 8px', fontSize: 11 }}>
                 {view!.controllers!.map(c => (
-                  <option key={c.key} value={c.key}>{c.label}{c.offline ? ' (offline)' : ''}</option>
+                  <option key={c.key} value={c.key}>{c.label}{c.firmwareVersion ? ` · fw ${c.firmwareVersion}` : ''}{c.offline ? ' (offline)' : ''}</option>
                 ))}
               </select>
             </div>
@@ -297,6 +306,8 @@ export default function VseccLogPanel({ stationId }: Props) {
         )}
       </div>
 
+      <VseccInfoCard c={curCtrl} now={now} isAdmin={isAdmin} />
+
       {/* Content */}
       <div className="card">
         <div className="card-header">
@@ -359,7 +370,53 @@ export default function VseccLogPanel({ stationId }: Props) {
   );
 }
 
-interface StatusRow { id: string; name: string; configured: boolean; lastRunAt: string | null; lastOkAt: string | null; lastError: string | null; nextTryAt: string | null; vseccs: string[] }
+const infoLabel = { fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' };
+const normKey = (k: string) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** Firmware / model of the vSECC being shown. Admins also get everything else the vSECC reports (serial, license, uptime …). */
+function VseccInfoCard({ c, now, isAdmin }: { c: CtrlInfo | undefined; now: number; isAdmin: boolean }) {
+  if (!c) return null;
+  const details = isAdmin && c.info
+    ? Object.entries(c.info).filter(([k]) => !['firmwareversion', 'model'].includes(normKey(k)))
+    : [];
+  const fw = c.firmwareVersion || (c.infoAt ? 'not reported' : c.infoError ? 'unavailable' : 'not read yet');
+  return (
+    <div className="card" style={{ padding: '0.75rem 1rem' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'flex-end' }}>
+        <div>
+          <div style={infoLabel}>Firmware</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: c.firmwareVersion ? 'var(--text-primary)' : 'var(--text-muted)' }}>{fw}</div>
+        </div>
+        {c.model && (
+          <div>
+            <div style={infoLabel}>Model</div>
+            <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>{c.model}</div>
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', paddingBottom: 2 }}>
+          vSECC {c.label}{c.infoAt ? ` · read ${ago(c.infoAt, now)}` : ''}
+        </div>
+      </div>
+      {isAdmin && c.infoError && (
+        <div style={{ marginTop: 6, fontSize: 10, color: 'var(--warn-text)' }}>
+          ⚠ GET /information: {c.infoError}{c.info ? ' — showing the last good reading' : ''}
+        </div>
+      )}
+      {details.length > 0 && (
+        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '6px 16px' }}>
+          {details.map(([k, v]) => (
+            <div key={k}>
+              <div style={infoLabel}>{k}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{v === null ? '—' : String(v)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface StatusRow { id: string; name: string; configured: boolean; lastRunAt: string | null; lastOkAt: string | null; lastError: string | null; nextTryAt: string | null; vseccs: string[]; firmware?: { key: string; version: string | null }[] }
 
 /** Admin-only: every Vector station's collection status, to see at a glance which cabinets are being stored. */
 function CollectorStatusTable({ now }: { now: number }) {
@@ -381,6 +438,10 @@ function CollectorStatusTable({ now }: { now: number }) {
     Number(!!a.lastError) - Number(!!b.lastError) || (b.lastOkAt || '').localeCompare(a.lastOkAt || '') || a.name.localeCompare(b.name));
   const okCount = rows.filter(r => r.lastOkAt && !r.lastError).length;
   const never = rows.filter(r => !r.lastRunAt).length;
+  // How many vSECCs run each firmware version — handy before / after a fleet update.
+  const versionCounts = new Map<string, number>();
+  for (const r of rows) for (const f of r.firmware || []) versionCounts.set(f.version || 'unknown', (versionCounts.get(f.version || 'unknown') || 0) + 1);
+  const versions = [...versionCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const c = data?.collector;
   const cell = { padding: '4px 8px', borderBottom: '1px solid var(--border)', fontSize: 11, verticalAlign: 'top' as const };
 
@@ -404,11 +465,16 @@ function CollectorStatusTable({ now }: { now: number }) {
               {c.running ? 'Collector running' : 'Collector not running in this process'} · stored in <code>{c.logDir}</code>
             </div>
           )}
+          {versions.length > 0 && (
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              Firmware: {versions.map(([v, n]) => `${v} × ${n}`).join(' · ')}
+            </div>
+          )}
           <div style={{ maxHeight: 420, overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ textAlign: 'left', color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase' }}>
-                  <th style={cell}>Station</th><th style={cell}>Status</th><th style={cell}>vSECC</th><th style={cell}>Last collected</th><th style={cell}>Details</th>
+                  <th style={cell}>Station</th><th style={cell}>Status</th><th style={cell}>vSECC</th><th style={cell}>Firmware</th><th style={cell}>Last collected</th><th style={cell}>Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -420,6 +486,9 @@ function CollectorStatusTable({ now }: { now: number }) {
                       <td style={cell}><a href={`/station/${encodeURIComponent(r.id)}`} style={{ color: 'var(--text-primary)' }}>{r.name}</a></td>
                       <td style={{ ...cell, color, whiteSpace: 'nowrap' }}>● {status}</td>
                       <td style={cell}>{r.vseccs.join(', ') || '—'}</td>
+                      <td style={{ ...cell, whiteSpace: 'nowrap' }}>
+                        {(r.firmware || []).map(f => `${f.version || '—'}${(r.firmware?.length ?? 0) > 1 ? ` (${f.key})` : ''}`).join(', ') || '—'}
+                      </td>
                       <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.lastOkAt ? ago(r.lastOkAt, now) : 'never'}</td>
                       <td style={{ ...cell, color: 'var(--text-secondary)' }}>
                         {r.lastError || ''}

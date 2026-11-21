@@ -10,6 +10,7 @@ import {
 import { audit } from '@/lib/audit';
 import { buildZip } from '@/lib/zipWriter';
 import { canViewStation } from '@/lib/stationAccess';
+import { infoView } from '@/lib/vseccInfo';
 
 const MAX_TAIL_LINES = 5000;
 
@@ -133,7 +134,8 @@ export async function GET(req: NextRequest) {
       totalLines: null,
       lines,
       partial: true,
-      controllers: controllers.map(c => ({ key: c.key, label: c.label, lastOkAt: c.lastOkAt, offline: !!c.lastError })),
+      // Firmware / model for everyone with access to the station; serial, license, uptime … and read errors for admins only.
+      controllers: controllers.map(c => ({ key: c.key, label: c.label, lastOkAt: c.lastOkAt, offline: !!c.lastError, ...infoView(c, session.role === 'admin') })),
       controller,
       fetchedAt: ctrl?.lastOkAt || null,
       collector: {
