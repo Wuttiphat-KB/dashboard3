@@ -26,7 +26,8 @@ export interface ChargingHead {
 }
 
 export interface ChargingStation {
-  station: { id: string; name: string; displayName: string; chargerHeads: number };
+  /** `zerotierIp` is '' / absent when none is configured — ZerotierCopy then renders nothing. */
+  station: { id: string; name: string; displayName: string; chargerHeads: number; zerotierIp?: string };
   status: StationStatus;
   /** False → station offline or PLC payload stale; head values are blanked. */
   live: boolean;

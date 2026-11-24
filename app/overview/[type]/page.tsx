@@ -471,7 +471,7 @@ function DeviceStatusCard({ station, data }: { station: Station; data: StationDa
   const ds = (data as any).__deviceStatus as
     | { hmi: string; plc1: string; plc2: string;
         imd?: string; emergencyActive?: boolean; tempSensorFaults?: string[];
-        head1: { tempPos: number; tempNeg: number }; head2: { tempPos: number; tempNeg: number }; }
+        head1: { tempPos: number | null; tempNeg: number | null }; head2: { tempPos: number | null; tempNeg: number | null }; }
     | undefined;
 
   const numHeads = station.chargerHeads || 2;
@@ -492,10 +492,11 @@ function DeviceStatusCard({ station, data }: { station: Station; data: StationDa
     if (ds.imd != null && !statusOk(ds.imd)) inactiveStatuses.push('IMD');
   }
 
-  const allTemps: number[] = ds ? [
+  // Only readings the PLC actually sent count toward the roll-up (null = nothing received).
+  const allTemps: number[] = (ds ? [
     ds.head1.tempPos, ds.head1.tempNeg,
     ...(numHeads >= 2 ? [ds.head2.tempPos, ds.head2.tempNeg] : []),
-  ] : [];
+  ] : []).filter((t): t is number => t != null);
   const maxTemp = allTemps.length ? Math.max(...allTemps) : 0;
   const tempState = tempLevel(maxTemp);
 
@@ -564,9 +565,11 @@ function DeviceStatusCard({ station, data }: { station: Station; data: StationDa
     );
   }
 
-  function TempPill({ label, value }: { label: string; value: number }) {
-    const lvl = tempLevel(value);
-    const color = lvl === 'danger' ? 'var(--error-text)' : lvl === 'warn' ? 'var(--warn-text)' : 'var(--ok-text)';
+  // Shows the value exactly as the PLC reported it (0 and negatives included).
+  // "—" only when no value was received at all (value === null).
+  function TempPill({ label, value }: { label: string; value: number | null }) {
+    const lvl = value == null ? 'none' : tempLevel(value);
+    const color = lvl === 'danger' ? 'var(--error-text)' : lvl === 'warn' ? 'var(--warn-text)' : lvl === 'none' ? 'var(--text-muted)' : 'var(--ok-text)';
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -574,7 +577,7 @@ function DeviceStatusCard({ station, data }: { station: Station; data: StationDa
       }}>
         <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
         <span style={{ fontSize: 13, fontWeight: 800, color, fontFamily: 'monospace' }}>
-          {value > 0 ? `${value.toFixed(0)}` : '—'}<span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 2 }}>°C</span>
+          {value != null ? String(Number(value.toFixed(1))) : '—'}<span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 2 }}>°C</span>
         </span>
       </div>
     );

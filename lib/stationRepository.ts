@@ -1,5 +1,6 @@
 import { MongoClient } from 'mongodb';
 import { getStationsCache } from './stationsCache';
+import { scanStationCollections } from './stationScan';
 
 const STATION_DB = 'Station';
 
@@ -7,7 +8,6 @@ const STATION_DB = 'Station';
 // slow path. Cache for 60s. Cache lives on globalThis (lib/stationsCache) so save/delete
 // can invalidate it after a config change.
 const STATION_CACHE_MS = 60_000;
-const FINDONE_CONCURRENCY = 20;
 const CACHE_QUERY_MS = 20_000;
 
 export async function loadStations(client: MongoClient): Promise<any[]> {
@@ -32,35 +32,15 @@ export async function loadStations(client: MongoClient): Promise<any[]> {
       return docs;
     }
 
-    // SLOW FALLBACK: scan per-station collections — pick canonical doc per id.
-    const cols = await db.listCollections().toArray();
-    const targets = cols.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
-    interface Candidate { doc: any; updatedAt: number; canonical: boolean; }
-    const bestById = new Map<string, Candidate>();
-    for (let i = 0; i < targets.length; i += FINDONE_CONCURRENCY) {
-      const batch = targets.slice(i, i + FINDONE_CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async col => ({ col: col.name, doc: await db.collection(col.name).findOne().catch(() => null) })),
-      );
-      for (const { col, doc } of results) {
-        if (!doc || !doc.id) continue;
-        const cand: Candidate = {
-          doc,
-          updatedAt: new Date(doc.updatedAt || 0).getTime(),
-          canonical: doc.name === col,
-        };
-        const existing = bestById.get(doc.id);
-        if (!existing
-          || (cand.canonical && !existing.canonical)
-          || (cand.canonical === existing.canonical && cand.updatedAt > existing.updatedAt)) {
-          bestById.set(doc.id, cand);
-        }
-      }
+    // SLOW FALLBACK: scan per-station collections — lib/stationScan picks the canonical
+    // doc per id and skips edge events stored in the same collection.
+    const scan = await scanStationCollections(db);
+    if (!scan.complete) {
+      console.warn(`[stations] scan incomplete: ${scan.failed.length}/${scan.scanned} collection(s) could not be read (${scan.failed.slice(0, 10).join(', ')})`);
     }
-    const out = [...bestById.values()].map(c => c.doc);
-    cache.data = out;
+    cache.data = scan.stations;
     cache.at = Date.now();
-    return out;
+    return scan.stations;
   })();
 
   try {

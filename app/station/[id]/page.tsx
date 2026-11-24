@@ -12,7 +12,7 @@ import FanRPMPanel      from '@/components/FanRPMPanel';
 import MqttScriptPanel  from '@/components/MqttScriptPanel';
 import PlcPanel         from '@/components/PlcPanel';
 import VseccLogPanel    from '@/components/VseccLogPanel';
-import { ZerotierCopy } from '@/components/ui/CopyButton';
+import CopyButton, { ZerotierCopy } from '@/components/ui/CopyButton';
 import { useSessionAccess } from '@/components/SessionProvider';
 const TABS = [
   { id: 'heartbeat',   label: '♡  Heartbeat'     },
@@ -108,6 +108,25 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
                 }}>
                   {station.zerotierIp}
                 </span>
+              ) : canEdit ? (
+                <Link href={`/config?edit=${station.id}`} style={{ fontSize: 11, color: 'var(--text-muted)', textDecoration: 'none' }}>
+                  not set — add in Config
+                </Link>
+              ) : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>not set</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ChargeBox ID</span>
+              {station.chargeBoxId ? (
+                <>
+                  <span style={{
+                    fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-geist-mono), monospace',
+                    color: 'var(--text-secondary)', background: 'var(--bg-elevated)',
+                    padding: '3px 8px', borderRadius: 'var(--radius-sm)', overflowWrap: 'anywhere',
+                  }}>
+                    {station.chargeBoxId}
+                  </span>
+                  <CopyButton value={station.chargeBoxId} title={`Copy ChargeBox ID — ${station.chargeBoxId}`} size={20} />
+                </>
               ) : canEdit ? (
                 <Link href={`/config?edit=${station.id}`} style={{ fontSize: 11, color: 'var(--text-muted)', textDecoration: 'none' }}>
                   not set — add in Config

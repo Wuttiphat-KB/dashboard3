@@ -100,7 +100,7 @@ test('/api/charging: live heads from the PLC payload, Offline/Unknown when not l
   const data = new Map<string, Doc[]>([
     ['Station._users', [{ username: 'pt.user', role: 'customer', customer: 'PT' }]],
     ['Station._stations', [
-      { id: 'LIVE', name: 'LIVE', displayName: 'Live 1', chargerHeads: 2, customer: { name: 'PT' } },
+      { id: 'LIVE', name: 'LIVE', displayName: 'Live 1', chargerHeads: 2, zerotierIp: '10.147.20.13', customer: { name: 'PT' } },
       { id: 'OFF', name: 'OFF', chargerHeads: 2, customer: { name: 'PT' } },
       { id: 'STALE', name: 'STALE', chargerHeads: 2, customer: { name: 'OTHER' } },
       { id: 'SINGLE', name: 'SINGLE', chargerHeads: 1, hasPi5: false, customer: { name: 'OTHER' } },
@@ -155,6 +155,7 @@ test('/api/charging: live heads from the PLC payload, Offline/Unknown when not l
     assert.equal(live.status, 'online');
     assert.equal(live.live, true);
     assert.equal(live.station.displayName, 'Live 1');
+    assert.equal(live.station.zerotierIp, '10.147.20.13');  // feeds the copy button on the Charging page
     assert.deepEqual(live.heads.map((h: Doc) => [h.state, h.soc, h.powerKw, h.maxPowerKw]), [
       ['Charging', 33, 43, 60],
       ['Charging', 34, 69, 131.631],
@@ -163,6 +164,7 @@ test('/api/charging: live heads from the PLC payload, Offline/Unknown when not l
     const off = row('OFF');
     assert.equal(off.status, 'offline');
     assert.equal(off.live, false);
+    assert.equal(off.station.zerotierIp, '');  // none configured → empty, so no button
     assert.equal(off.updatedAt, offlineSince.toISOString());
     assert.deepEqual(off.heads.map((h: Doc) => [h.state, h.soc, h.powerKw]), [['Offline', 0, 0], ['Offline', 0, 0]]);
 
@@ -172,6 +174,8 @@ test('/api/charging: live heads from the PLC payload, Offline/Unknown when not l
 
     // Customer accounts only see their own stations.
     assert.deepEqual((await get('customer')).map((r: { station: { id: string } }) => r.station.id).sort(), ['LIVE', 'OFF']);
+    // …and they get the IP of their own stations, same as /api/fleet.
+    assert.equal((await get('customer')).find((r: { station: { id: string } }) => r.station.id === 'LIVE').station.zerotierIp, '10.147.20.13');
     assert.equal((await GET(new NextRequest('http://localhost/api/charging'))).status, 401);
   } finally {
     globals.__mongoClient = previousClient;

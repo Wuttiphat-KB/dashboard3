@@ -6,6 +6,7 @@ import { useStations } from '@/lib/hooks/useStations';
 import { invalidateStations } from '@/lib/hooks/dataCache';
 import { Station } from '@/lib/types';
 import { trimCustomerInfo, validateCustomerInfo } from '@/lib/customerInfo';
+import { trimChargeBoxId, validateChargeBoxId, CHARGE_BOX_ID_MAX_LENGTH } from '@/lib/chargeBoxId';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
 import { useSessionAccess } from '@/components/SessionProvider';
 
@@ -17,6 +18,7 @@ const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   lat: undefined,
   lng: undefined,
   zerotierIp: '',
+  chargeBoxId: '',
   chargerHeads: 2,
   expectedPmPerHead: 3,
   expectedPmHead1: 3,
@@ -190,6 +192,11 @@ function ConfigPageInner() {
       setSaveError(customerError);
       return;
     }
+    const chargeBoxError = validateChargeBoxId(form.chargeBoxId);
+    if (chargeBoxError) {
+      setSaveError(chargeBoxError);
+      return;
+    }
     const trimmedName = form.name.trim();
     if (!trimmedName) {
       setSaveError('Station name is required');
@@ -206,6 +213,7 @@ function ConfigPageInner() {
       stationDoc = {
         ...form,
         customer: trimCustomerInfo(form.customer),
+        chargeBoxId: trimChargeBoxId(form.chargeBoxId),
         name: trimmedName,
         id: form.id,
         createdAt: stations.find(s => s.id === form.id)?.createdAt ?? new Date().toISOString(),
@@ -224,6 +232,7 @@ function ConfigPageInner() {
       stationDoc = {
         ...form,
         customer: trimCustomerInfo(form.customer),
+        chargeBoxId: trimChargeBoxId(form.chargeBoxId),
         name: trimmedName,
         id: newId,
         createdAt: new Date().toISOString(),
@@ -278,7 +287,8 @@ function ConfigPageInner() {
           (s.name        || '').toLowerCase().includes(q) ||
           (s.displayName || '').toLowerCase().includes(q) ||
           (s.location    || '').toLowerCase().includes(q) ||
-          (s.customer?.name || '').toLowerCase().includes(q)
+          (s.customer?.name || '').toLowerCase().includes(q) ||
+          (s.chargeBoxId || '').toLowerCase().includes(q)
         );
       });
 
@@ -370,10 +380,10 @@ function ConfigPageInner() {
             <input
               type="text"
               className="input"
-              placeholder="Search stations or customers..."
+              placeholder="Search station, customer, ChargeBox ID..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ width: 220, fontSize: 12 }}
+              style={{ width: 260, fontSize: 12 }}
             />
             <button className="btn btn-primary" onClick={() => { setForm({ ...EMPTY_STATION }); setMode('add'); }}>
               + Add Station
@@ -407,6 +417,12 @@ function ConfigPageInner() {
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, overflowWrap: 'anywhere' }}>
                       <span style={{ fontWeight: 600 }}>Customer: </span>
                       {station.customer.name}
+                    </div>
+                  )}
+                  {station.chargeBoxId && (
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, overflowWrap: 'anywhere' }}>
+                      <span style={{ fontWeight: 600 }}>ChargeBox ID: </span>
+                      <span style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>{station.chargeBoxId}</span>
                     </div>
                   )}
                   {/* Quick topic summary */}
@@ -523,6 +539,18 @@ function ConfigPageInner() {
               value={form.zerotierIp ?? ''} onChange={v => setForm(f => ({ ...f, zerotierIp: v }))}
               placeholder="e.g. 10.147.20.13" mono={true}
               hint="Remote-access address on the ZeroTier network — shown with a copy button on the station page" />
+            <div>
+              <label className="input-label" htmlFor="charge-box-id">ChargeBox ID</label>
+              <input id="charge-box-id" className="input" type="text"
+                autoComplete="off" spellCheck={false}
+                placeholder="e.g. EGAT-BKK-003"
+                value={form.chargeBoxId ?? ''}
+                onChange={e => setForm(f => ({ ...f, chargeBoxId: e.target.value }))}
+                style={{ fontFamily: 'var(--font-geist-mono), monospace' }} />
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
+                รหัส ChargeBox ID ของตู้ตามที่ตั้งไว้ใน OCPP (ไม่บังคับ · ไม่เกิน {CHARGE_BOX_ID_MAX_LENGTH} ตัวอักษร · ภาษาอังกฤษ/ตัวเลข/สัญลักษณ์ ไม่มีช่องว่าง)
+              </div>
+            </div>
             <div>
               <label className="input-label">Number of Charger Heads</label>
               <input className="input" type="number" min={1} max={8}

@@ -55,6 +55,7 @@ export interface Station {
   lat?:             number;      // map latitude (decimal degrees) — optional; falls back to location lookup
   lng?:             number;      // map longitude (decimal degrees)
   zerotierIp?:      string;      // ZeroTier IP for remote access (e.g. 10.147.20.13) — copyable on the station page
+  chargeBoxId?:     string;      // OCPP ChargeBox ID (charge point identity, ≤48 ASCII chars) — optional, '' = not set
   chargerHeads:     number;
   expectedPmPerHead: number;     // DEPRECATED — kept for backwards compatibility (use head1/head2 below)
   expectedPmHead1:  number;      // expected PM count for charger head 1
