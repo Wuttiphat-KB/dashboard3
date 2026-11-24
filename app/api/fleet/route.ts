@@ -5,6 +5,7 @@ import { getFleetCache } from '@/lib/fleetCache';
 import { getRequestSession, visibleStationIds } from '@/lib/authorization';
 import { cachedResponse } from '@/lib/apiCache';
 import { stationStatus, stalePlcState } from '@/lib/liveData';
+import { scanStationCollections } from '@/lib/stationScan';
 
 const STATION_DB = 'Station';
 const HB_TIMEOUT = 300_000; // 5 min
@@ -14,7 +15,6 @@ const HB_TIMEOUT = 300_000; // 5 min
 // primary reason /api/fleet was timing out at 30s. Cache the loaded station list
 // for 60s so subsequent requests skip that whole loop.
 const STATION_CACHE_MS = 60_000;
-const FINDONE_CONCURRENCY = 20;
 
 // ── Whole-response cache ────────────────────────────────────────────────────
 // Every open browser tab refetches this route on WebSocket traffic. Without a
@@ -75,37 +75,15 @@ async function loadStations(client: MongoClient): Promise<any[]> {
     }
 
     // SLOW FALLBACK: scan per-station collections. Only used until backend has
-    // populated _stations for the first time. Picks the canonical doc per id
-    // (where doc.name === collection name); otherwise the most-recently-updated.
-    const cols = await stDb.listCollections().toArray();
-    const targets = cols.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
-    interface Candidate { doc: any; colName: string; updatedAt: number; canonical: boolean; }
-    const bestById = new Map<string, Candidate>();
-    for (let i = 0; i < targets.length; i += FINDONE_CONCURRENCY) {
-      const batch = targets.slice(i, i + FINDONE_CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async col => ({ col: col.name, doc: await stDb.collection(col.name).findOne().catch(() => null) })),
-      );
-      for (const { col, doc } of results) {
-        if (!doc || !doc.id) continue;
-        const cand: Candidate = {
-          doc,
-          colName: col,
-          updatedAt: new Date(doc.updatedAt || 0).getTime(),
-          canonical: doc.name === col,
-        };
-        const existing = bestById.get(doc.id);
-        if (!existing
-          || (cand.canonical && !existing.canonical)
-          || (cand.canonical === existing.canonical && cand.updatedAt > existing.updatedAt)) {
-          bestById.set(doc.id, cand);
-        }
-      }
+    // populated _stations for the first time. lib/stationScan picks the canonical
+    // doc per id and skips edge events stored in the same collection.
+    const scan = await scanStationCollections(stDb);
+    if (!scan.complete) {
+      console.warn(`[api/fleet] station scan incomplete: ${scan.failed.length}/${scan.scanned} collection(s) could not be read (${scan.failed.slice(0, 10).join(', ')})`);
     }
-    const out = [...bestById.values()].map(c => c.doc);
-    cache.data = out;
+    cache.data = scan.stations;
     cache.at = Date.now();
-    return out;
+    return scan.stations;
   })();
 
   try {
@@ -294,9 +272,14 @@ async function buildFleet(): Promise<any[]> {
         const v = plcSource[key];
         return v != null ? String(v) : 'Unknown';
       };
-      const devTemp = (key: string): number => {
-        if (!plcSource) return 0;
-        return Number(plcSource[key] ?? 0);
+      // null = the payload has no usable value for this sensor (the page shows "—").
+      // Real readings, including 0 and negatives, pass through untouched.
+      const devTemp = (key: string): number | null => {
+        if (!plcSource) return null;
+        const raw = plcSource[key];
+        if (raw == null || raw === '') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
       };
       // Vector controllers add safety fields that Phoenix doesn't have. They
       // are passed through verbatim — DeviceStatusCard renders them when

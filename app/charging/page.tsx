@@ -8,6 +8,7 @@ import {
   type ChargingHead, type ChargingStation,
 } from '@/lib/charging';
 import { StateBadge, fmtKw, socColor } from '@/components/charging/chargingUi';
+import { ZerotierCopy } from '@/components/ui/CopyButton';
 import { fmtTime, timeSince } from '@/lib/formatTime';
 
 type Filter = 'all' | 'charging' | 'available' | 'attention';
@@ -117,6 +118,7 @@ function StationCard({ s }: { s: ChargingStation }) {
         <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {s.station.displayName}
         </span>
+        <ZerotierCopy ip={s.station.zerotierIp} />
         {kw > 0 && (
           <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 700, color: 'var(--warn-text)', flexShrink: 0 }}>{fmtKw(kw)} kW</span>
         )}

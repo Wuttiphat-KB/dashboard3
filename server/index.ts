@@ -26,6 +26,7 @@ import { startPeakHoursAggregator, backfillPeakStation } from './modules/peakHou
 import { initVectorHandler, registerVectorStation, unregisterVectorStation } from './modules/vector';
 import { onMessage } from './mqtt';
 import { MOCK_STATIONS } from '../lib/mockData';
+import { scanStationCollections, pruneStaleStations } from '../lib/stationScan';
 
 const STATION_DB = 'Station';
 
@@ -55,9 +56,21 @@ interface StationConfig {
   [key: string]: any;
 }
 
+interface LoadResult {
+  stations: StationConfig[];
+  /**
+   * False when the list may be missing stations that really exist (a collection could not
+   * be read, or the whole load failed). A partial list is not evidence that a station was
+   * deleted — callers must not remove or unregister anything because of it.
+   */
+  complete: boolean;
+  /** Taken before the first query: `_stations` rows written after this are newer than the list. */
+  loadedAt: Date;
+}
+
 /** Load station configs from MongoDB db=Station — uses the shared connection + parallel findOne */
-const STATIONS_LOAD_CONCURRENCY = 20;
-async function loadStationsFromMongo(opts?: { forceSlowScan?: boolean }): Promise<StationConfig[]> {
+async function loadStationsFromMongo(opts?: { forceSlowScan?: boolean }): Promise<LoadResult> {
+  const loadedAt = new Date();
   try {
     const db = getStationDb();
 
@@ -68,55 +81,31 @@ async function loadStationsFromMongo(opts?: { forceSlowScan?: boolean }): Promis
       try {
         const mirrored = await db.collection('_stations').find().toArray();
         if (mirrored.length > 0) {
-          return mirrored.filter(d => d.id && d.mqttTopics) as unknown as StationConfig[];
+          return {
+            stations: mirrored.filter(d => d.id && d.mqttTopics) as unknown as StationConfig[],
+            complete: true,
+            loadedAt,
+          };
         }
       } catch {
         // fall through to slow scan
       }
     }
 
-    // SLOW PATH: list per-station collections, findOne each, in parallel batches.
-    //
-    // Renaming a station via /config writes the NEW doc to `Station.{newName}`
-    // but leaves the old `Station.{oldName}` collection intact. Both contain a
-    // doc with the same `id`, so we have to pick the canonical one or restart
-    // will randomly pick the orphan (and revert displayName / topics).
-    //
-    // Rules, in order of priority:
-    //   1. Prefer the doc whose `name` equals its collection name — the doc
-    //      lives in its own collection only after a fresh save.
-    //   2. Otherwise prefer the most-recently-updated doc.
-    const collections = await db.listCollections().toArray();
-    const targets = collections.filter(c => !c.name.startsWith('system.') && !c.name.startsWith('_'));
-
-    interface Candidate { doc: any; colName: string; updatedAt: number; canonical: boolean; }
-    const bestById = new Map<string, Candidate>();
-
-    for (let i = 0; i < targets.length; i += STATIONS_LOAD_CONCURRENCY) {
-      const batch = targets.slice(i, i + STATIONS_LOAD_CONCURRENCY);
-      const results = await Promise.all(
-        batch.map(async col => ({ col: col.name, doc: await db.collection(col.name).findOne().catch(() => null) })),
+    // SLOW PATH: list per-station collections, findOne each, in parallel batches
+    // (lib/stationScan — also explains the canonical-doc rules for renamed stations).
+    const scan = await scanStationCollections(db, { requireTopics: true });
+    if (!scan.complete) {
+      const shown = scan.failed.slice(0, 10).join(', ') + (scan.failed.length > 10 ? ', …' : '');
+      console.warn(
+        `[init] station scan incomplete: ${scan.failed.length}/${scan.scanned} collection(s) could not be read (${shown}) ` +
+        `— nothing will be removed from _stations or unregistered on this pass`,
       );
-      for (const { col, doc } of results) {
-        if (!doc || !doc.id || !doc.mqttTopics) continue;
-        const cand: Candidate = {
-          doc,
-          colName: col,
-          updatedAt: new Date(doc.updatedAt || 0).getTime(),
-          canonical: doc.name === col,
-        };
-        const existing = bestById.get(doc.id);
-        if (!existing
-          || (cand.canonical && !existing.canonical)
-          || (cand.canonical === existing.canonical && cand.updatedAt > existing.updatedAt)) {
-          bestById.set(doc.id, cand);
-        }
-      }
     }
-    return [...bestById.values()].map(c => c.doc as unknown as StationConfig);
+    return { stations: scan.stations as unknown as StationConfig[], complete: scan.complete, loadedAt };
   } catch (err: any) {
     console.error(`[init] Failed to load stations from MongoDB:`, err.message);
-    return [];
+    return { stations: [], complete: false, loadedAt };
   }
 }
 
@@ -131,7 +120,15 @@ async function loadStationsFromMongo(opts?: { forceSlowScan?: boolean }): Promis
 let syncStationsInflight = false;
 let lastSyncSignature = '';
 
-async function syncStationsMeta(stations: StationConfig[]): Promise<void> {
+async function syncStationsMeta(
+  stations: StationConfig[],
+  opts: {
+    /** Remove `_stations` rows that are not in `stations`. Only true when the list is complete. */
+    allowPrune: boolean;
+    /** When `stations` was read — rows saved from /config after this are never pruned. */
+    snapshotAt: Date;
+  },
+): Promise<void> {
   if (stations.length === 0) return;
   if (syncStationsInflight) {
     console.log('[init] syncStationsMeta skipped — previous sync still running');
@@ -159,9 +156,15 @@ async function syncStationsMeta(stations: StationConfig[]): Promise<void> {
     });
     const tStart = Date.now();
     await db.collection('_stations').bulkWrite(ops, { ordered: false });
-    // Drop any stations no longer in the latest list
-    const ids = stations.map(s => s.id);
-    await db.collection('_stations').deleteMany({ id: { $nin: ids } });
+    // Drop stations that are no longer in the latest list — but only when that list is
+    // trustworthy, and never a row written after the list was read (a station saved from
+    // /config while this sync was running would otherwise vanish right after being added).
+    if (opts.allowPrune) {
+      const removed = await pruneStaleStations(db, stations.map(s => s.id), opts.snapshotAt);
+      if (removed.length > 0) {
+        console.warn(`[init] removed ${removed.length} station(s) from _stations (not found by the latest load): ${removed.join(', ')}`);
+      }
+    }
     lastSyncSignature = sig;
     console.log(`[init] synced ${stations.length} stations → _stations in ${Date.now() - tStart}ms`);
   } catch (err: any) {
@@ -348,9 +351,11 @@ async function main() {
   //    Fall back to MOCK_STATIONS if none found.
   //    forceSlowScan: bypass _stations cache on startup so any per-station
   //    collection that was added without touching _stations gets picked up.
-  let stations = await loadStationsFromMongo({ forceSlowScan: true });
+  const initialLoad = await loadStationsFromMongo({ forceSlowScan: true });
+  let stations = initialLoad.stations;
+  const usingMock = stations.length === 0;
 
-  if (stations.length === 0) {
+  if (usingMock) {
     console.log('[init] No stations in MongoDB db=Station, using MOCK_STATIONS as fallback');
     stations = MOCK_STATIONS as unknown as StationConfig[];
   } else {
@@ -378,8 +383,13 @@ async function main() {
     console.log(`  ✓ ${station.id} (${station.displayName || station.name})`);
   }
 
-  // Mirror to _stations so the Next.js API can avoid the slow per-collection scan
-  await syncStationsMeta(stations);
+  // Mirror to _stations so the Next.js API can avoid the slow per-collection scan.
+  // Pruning is allowed only when the scan read every collection and we are not on the
+  // MOCK fallback — a failed or partial load must never wipe real stations from _stations.
+  await syncStationsMeta(stations, {
+    allowPrune: initialLoad.complete && !usingMock,
+    snapshotAt: initialLoad.loadedAt,
+  });
 
   // Fire-and-forget — populate _pm_data and _meter_latest in the background
   // so the dashboard has values even before MQTT messages arrive for each head.
@@ -428,7 +438,7 @@ async function main() {
     if (reloadInflight) return;
     reloadInflight = true;
     try {
-      const latest = await loadStationsFromMongo();
+      const { stations: latest, complete, loadedAt } = await loadStationsFromMongo();
       const latestIds = new Set(latest.map(s => s.id));
 
       // Add new stations + update edited ones
@@ -452,21 +462,24 @@ async function main() {
         }
       }
 
-      // Remove deleted stations
-      for (const id of registeredConfigs.keys()) {
-        if (!latestIds.has(id)) {
-          unregisterStation(id);
-          unregisterVectorStation(id);
-          registeredConfigs.delete(id);
-          console.log(`[init] − removed: ${id}`);
+      // Remove deleted stations — only from a complete list. A partial read says nothing
+      // about deletion, and unregistering would silence a station that is still live.
+      if (complete) {
+        for (const id of registeredConfigs.keys()) {
+          if (!latestIds.has(id)) {
+            unregisterStation(id);
+            unregisterVectorStation(id);
+            registeredConfigs.delete(id);
+            console.log(`[init] − removed: ${id}`);
+          }
         }
       }
 
       // Refresh _stations mirror so Next.js API stays up to date
-      await syncStationsMeta(latest);
+      await syncStationsMeta(latest, { allowPrune: complete, snapshotAt: loadedAt });
 
-      // Keep the shared reference fresh for background jobs.
-      currentStations = latest;
+      // Keep the shared reference fresh for background jobs (never replace it with a partial list).
+      if (complete) currentStations = latest;
     } catch (err: any) {
       console.error('[init] reload error:', err.message);
     } finally {

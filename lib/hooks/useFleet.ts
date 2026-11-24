@@ -63,8 +63,8 @@ export interface FleetStation {
     imd?: string;                  // Vector-only — IMD insulation-monitor device status
     emergencyActive?: boolean;     // Vector-only — true when estop pressed or loop broken
     tempSensorFaults?: string[];   // Vector-only — list of failed cable temp sensors ("t1"...)
-    head1: { tempPos: number; tempNeg: number };
-    head2: { tempPos: number; tempNeg: number };
+    head1: { tempPos: number | null; tempNeg: number | null };   // null = no value received
+    head2: { tempPos: number | null; tempNeg: number | null };
   };
   scripts?: {
     faultStatus: { online: boolean; lastHeartbeat: string | null };

@@ -4,6 +4,7 @@ import { getMongoClient } from '@/lib/mongoClient';
 import { invalidateFleetCache } from '@/lib/fleetCache';
 import { invalidateStationsCache } from '@/lib/stationsCache';
 import { validateCustomerInfo } from '@/lib/customerInfo';
+import { validateChargeBoxId } from '@/lib/chargeBoxId';
 import { requireEditor, getRequestSession } from '@/lib/authorization';
 import { audit } from '@/lib/audit';
 import { invalidateResponse } from '@/lib/apiCache';
@@ -59,6 +60,11 @@ export async function POST(req: NextRequest) {
     const customerError = validateCustomerInfo(station.customer);
     if (customerError) {
       return NextResponse.json({ error: customerError }, { status: 400 });
+    }
+
+    const chargeBoxError = validateChargeBoxId(station.chargeBoxId);
+    if (chargeBoxError) {
+      return NextResponse.json({ error: chargeBoxError }, { status: 400 });
     }
 
     // ── Validate name ──
