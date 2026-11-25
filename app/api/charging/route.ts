@@ -69,6 +69,8 @@ async function buildCharging(): Promise<ChargingStation[]> {
         name: st.name,
         displayName: st.displayName || st.name || st.id,
         zerotierIp: st.zerotierIp || '',  // same field /api/fleet sends; feeds the copy button
+        commissioningDate: st.commissioningDate || '',  // + warrantyYears: feed the "หมดประกันแล้ว" badge
+        warrantyYears: st.warrantyYears ?? null,
         chargerHeads: numHeads,
       },
       status,

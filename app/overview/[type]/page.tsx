@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useFleet } from '@/lib/hooks/useFleet';
 import { StationDashboardData, Station, METER_MAX_KWH } from '@/lib/types';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
+import WarrantyBadge from '@/components/ui/WarrantyBadge';
+import { isWarrantyExpired } from '@/lib/warranty';
 
 const OVERVIEW_TYPES = [
   { id: 'heartbeat',   label: 'Heartbeat'    },
@@ -58,6 +60,11 @@ function Shell({ station, data, children, customBadge, borderColor }: {
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName}</div>
             <ZerotierCopy ip={station.zerotierIp} />
           </div>
+          {isWarrantyExpired(station.commissioningDate, station.warrantyYears) && (
+            <div style={{ marginTop: 6 }}>
+              <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} />
+            </div>
+          )}
         </div>
         {customBadge ?? <StatusBadge status={st} />}
       </div>
@@ -712,6 +719,8 @@ export default function OverviewPage({ params }: { params: Promise<{ type: strin
     const station: Station = {
       id: fl.station.id, name: fl.station.name, displayName: fl.station.displayName,
       zerotierIp: fl.station.zerotierIp,
+      commissioningDate: fl.station.commissioningDate,
+      warrantyYears: fl.station.warrantyYears,
       location: '', chargerHeads: fl.station.chargerHeads,
       expectedPmPerHead: fl.station.expectedPmPerHead,
       expectedPmHead1: fl.station.expectedPmHead1 ?? fl.station.expectedPmPerHead,

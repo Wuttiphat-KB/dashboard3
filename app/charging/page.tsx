@@ -9,6 +9,8 @@ import {
 } from '@/lib/charging';
 import { StateBadge, fmtKw, socColor } from '@/components/charging/chargingUi';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
+import WarrantyBadge from '@/components/ui/WarrantyBadge';
+import { isWarrantyExpired } from '@/lib/warranty';
 import { fmtTime, timeSince } from '@/lib/formatTime';
 
 type Filter = 'all' | 'charging' | 'available' | 'attention';
@@ -127,6 +129,12 @@ function StationCard({ s }: { s: ChargingStation }) {
           {s.status.toUpperCase()}
         </span>
       </div>
+
+      {isWarrantyExpired(s.station.commissioningDate, s.station.warrantyYears) && (
+        <div>
+          <WarrantyBadge commissioningDate={s.station.commissioningDate} warrantyYears={s.station.warrantyYears} />
+        </div>
+      )}
 
       {s.heads.map(h => <HeadBlock key={h.head} h={h} single={s.heads.length === 1} />)}
 

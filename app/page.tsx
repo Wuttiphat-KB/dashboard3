@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useFleet, FleetStation } from '@/lib/hooks/useFleet';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
+import WarrantyBadge from '@/components/ui/WarrantyBadge';
+import { isWarrantyExpired } from '@/lib/warranty';
 
 function StatusDot({ status }: { status: 'online' | 'degraded' | 'offline' }) {
   const map = {
@@ -30,6 +32,7 @@ function StationCard({ item }: { item: FleetStation }) {
   const hbOnline  = hbDevices.filter(Boolean).length;
   const hbTotal   = hbDevices.length;
   const pmTotal   = visiblePmHeads.reduce((s, h) => s + (h.online ? h.pmCount : 0), 0);
+  const warrantyExpired = isWarrantyExpired(station.commissioningDate, station.warrantyYears);
 
   return (
     <Link href={`/station/${station.id}`} style={{ textDecoration: 'none' }}>
@@ -51,6 +54,12 @@ function StationCard({ item }: { item: FleetStation }) {
           </div>
           <StatusDot status={status} />
         </div>
+
+        {warrantyExpired && (
+          <div style={{ marginBottom: 10 }}>
+            <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} />
+          </div>
+        )}
 
         {/* Metrics */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 10 }}>
@@ -132,6 +141,7 @@ export default function FleetOverview() {
   const onlineCount   = fleet.filter(f => f.status === 'online').length;
   const degradedCount = fleet.filter(f => f.status === 'degraded').length;
   const offlineCount  = fleet.filter(f => f.status === 'offline').length;
+  const warrantyExpiredCount = fleet.filter(f => isWarrantyExpired(f.station.commissioningDate, f.station.warrantyYears)).length;
 
   // Filter by search query — match against id, name, displayName
   const filtered = useMemo(() => {
@@ -226,6 +236,7 @@ export default function FleetOverview() {
           { label: 'Online',         value: onlineCount,     color: 'var(--ok)'    },
           { label: 'Degraded',       value: degradedCount,   color: 'var(--warn)'  },
           { label: 'Offline',        value: offlineCount,    color: 'var(--error)' },
+          { label: 'Out of warranty', value: warrantyExpiredCount, color: warrantyExpiredCount > 0 ? 'var(--error)' : 'var(--text-muted)' },
         ].map(s => (
           <div key={s.label} className="card" style={{ padding: '0.875rem 1rem' }}>
             <div className="stat-value" style={{ color: s.color, fontSize: 24 }}>{s.value}</div>

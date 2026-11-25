@@ -13,6 +13,8 @@ import MqttScriptPanel  from '@/components/MqttScriptPanel';
 import PlcPanel         from '@/components/PlcPanel';
 import VseccLogPanel    from '@/components/VseccLogPanel';
 import CopyButton, { ZerotierCopy } from '@/components/ui/CopyButton';
+import WarrantyBadge from '@/components/ui/WarrantyBadge';
+import { describeWarranty, formatWarrantyDate, formatWarrantyYears, warrantyStatus } from '@/lib/warranty';
 import { useSessionAccess } from '@/components/SessionProvider';
 const TABS = [
   { id: 'heartbeat',   label: '♡  Heartbeat'     },
@@ -68,6 +70,7 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
   };
   const { badge, led } = statusMap[status];
 
+  const warranty = warrantyStatus(station.commissioningDate, station.warrantyYears);
   const latest  = data.meterHistory[data.meterHistory.length - 1];
   const pmTotal = data.powerModuleHeads.reduce((s, h) => s + (h.online ? h.pmCount : 0), 0);
   const pmPower = data.powerModuleHeads.reduce((s, h) => s + (h.online ? h.powerKw : 0), 0);
@@ -126,6 +129,23 @@ export default function StationPage({ params }: { params: Promise<{ id: string }
                     {station.chargeBoxId}
                   </span>
                   <CopyButton value={station.chargeBoxId} title={`Copy ChargeBox ID — ${station.chargeBoxId}`} size={20} />
+                </>
+              ) : canEdit ? (
+                <Link href={`/config?edit=${station.id}`} style={{ fontSize: 11, color: 'var(--text-muted)', textDecoration: 'none' }}>
+                  not set — add in Config
+                </Link>
+              ) : <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>not set</span>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Warranty</span>
+              {warranty.state !== 'unknown' ? (
+                <>
+                  <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} showActive />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    {describeWarranty(warranty)}
+                    {' · '}Commissioned {formatWarrantyDate(station.commissioningDate)}
+                    {station.warrantyYears != null && ` · ประกัน ${formatWarrantyYears(station.warrantyYears)}`}
+                  </span>
                 </>
               ) : canEdit ? (
                 <Link href={`/config?edit=${station.id}`} style={{ fontSize: 11, color: 'var(--text-muted)', textDecoration: 'none' }}>
