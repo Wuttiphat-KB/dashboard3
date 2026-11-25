@@ -6,6 +6,8 @@ import { useStations } from '@/lib/hooks/useStations';
 import { useFleet } from '@/lib/hooks/useFleet';
 import { resolveCoords, THAILAND_CENTER, LatLng } from '@/lib/stationGeo';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
+import WarrantyBadge from '@/components/ui/WarrantyBadge';
+import { describeWarranty, warrantyStatus } from '@/lib/warranty';
 import { copyText } from '@/lib/clipboard';
 
 type Status = 'online' | 'degraded' | 'offline' | 'unknown';
@@ -79,6 +81,10 @@ interface MapStation {
   displayName: string;
   location: string;
   zerotierIp?: string;
+  commissioningDate?: string;
+  warrantyYears?: number | null;
+  /** 'หมดประกันแล้ว …' line for the popup — set only when the warranty has ended. */
+  warrantyNote?: string;
   status: Status;
   coords: LatLng | null;
 }
@@ -156,19 +162,25 @@ export default function StationMapPage() {
     for (const f of fleet) statusById.set(f.station.id, f.status as Status);
 
     return stations
-      .map((s): MapStation => ({
-        id: s.id,
-        displayName: s.displayName || s.name || s.id,
-        location: s.location || '',
-        zerotierIp: s.zerotierIp,
-        status: statusById.get(s.id) ?? 'unknown',
-        // Coordinate priority:
-        //   1) lat/lng stored on the station (Config field / spreadsheet import)
-        //   2) fall back to the location-text city lookup
-        coords: Number.isFinite(s.lat) && Number.isFinite(s.lng)
-          ? { lat: s.lat as number, lng: s.lng as number }
-          : resolveCoords(s.location),
-      }))
+      .map((s): MapStation => {
+        const warranty = warrantyStatus(s.commissioningDate, s.warrantyYears);
+        return {
+          id: s.id,
+          displayName: s.displayName || s.name || s.id,
+          location: s.location || '',
+          zerotierIp: s.zerotierIp,
+          commissioningDate: s.commissioningDate,
+          warrantyYears: s.warrantyYears,
+          warrantyNote: warranty.state === 'expired' ? `หมดประกันแล้ว ${describeWarranty(warranty)}` : undefined,
+          status: statusById.get(s.id) ?? 'unknown',
+          // Coordinate priority:
+          //   1) lat/lng stored on the station (Config field / spreadsheet import)
+          //   2) fall back to the location-text city lookup
+          coords: Number.isFinite(s.lat) && Number.isFinite(s.lng)
+            ? { lat: s.lat as number, lng: s.lng as number }
+            : resolveCoords(s.location),
+        };
+      })
       .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { numeric: true, sensitivity: 'base' }));
   }, [stations, fleet]);
 
@@ -186,11 +198,11 @@ export default function StationMapPage() {
   const mapped   = useMemo(() => filtered.filter(s => s.coords), [filtered]);
   const unmapped = useMemo(() => mapStations.filter(s => !s.coords), [mapStations]);
   // Stable signature of which stations are on the map (ids + coords + the
-  // ZeroTier IP the popup shows). Markers rebuild + the view refits only when
+  // ZeroTier IP and expired-warranty flag the popup shows). Markers rebuild + the view refits only when
   // this changes (search / data), not on every 30s status poll (status isn't
   // part of the key).
   const mappedKey = useMemo(
-    () => mapped.map(s => `${s.id}:${s.coords!.lat},${s.coords!.lng}:${s.zerotierIp ?? ''}`).join('|'),
+    () => mapped.map(s => `${s.id}:${s.coords!.lat},${s.coords!.lng}:${s.zerotierIp ?? ''}:${s.warrantyNote ? 'W' : ''}`).join('|'),
     [mapped],
   );
 
@@ -269,6 +281,7 @@ export default function StationMapPage() {
              ${STATUS_LABEL[s.status]}
            </div>
            <div style="font-size:10px;color:#888;margin-bottom:6px">📍 ${fmtCoords(s.coords!)}</div>
+           ${s.warrantyNote ? `<div style="font-size:11px;font-weight:700;color:#cf222e;margin-bottom:6px">● ${escapeHtml(s.warrantyNote)}</div>` : ''}
            ${s.zerotierIp ? `<div style="font-size:11px;margin-bottom:6px">ZeroTier <span style="font-family:monospace">${escapeHtml(s.zerotierIp)}</span> <button type="button" data-zt-copy="${escapeHtml(s.zerotierIp)}" title="Copy ZeroTier IP" style="cursor:pointer;border:1px solid #ccc;border-radius:4px;background:transparent;padding:0 4px;font-size:11px">📋</button></div>` : ''}
            <a href="/station/${encodeURIComponent(s.id)}" style="color:#0969da;font-size:11px">View station →</a>
          </div>`
@@ -402,6 +415,11 @@ export default function StationMapPage() {
                           </span>
                           <ZerotierCopy ip={s.zerotierIp} />
                         </span>
+                        {s.warrantyNote && (
+                          <span style={{ display: 'block', margin: '2px 0' }}>
+                            <WarrantyBadge commissioningDate={s.commissioningDate} warrantyYears={s.warrantyYears} />
+                          </span>
+                        )}
                         <span style={{ display: 'block', fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {s.location || '— no location —'}
                         </span>

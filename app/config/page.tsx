@@ -1,14 +1,22 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useStations } from '@/lib/hooks/useStations';
 import { invalidateStations } from '@/lib/hooks/dataCache';
 import { Station } from '@/lib/types';
 import { trimCustomerInfo, validateCustomerInfo } from '@/lib/customerInfo';
 import { trimChargeBoxId, validateChargeBoxId, CHARGE_BOX_ID_MAX_LENGTH } from '@/lib/chargeBoxId';
+import {
+  describeWarranty, formatWarrantyDate, formatWarrantyYears, normalizeWarrantyYears, todayInBangkok,
+  trimCommissioningDate, validateCommissioningDate, validateWarrantyYears, warrantyStatus,
+  WARRANTY_YEARS_MAX, WARRANTY_YEARS_STEP,
+} from '@/lib/warranty';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
+import WarrantyBadge from '@/components/ui/WarrantyBadge';
 import { useSessionAccess } from '@/components/SessionProvider';
+
+type WarrantyFilter = 'all' | 'expired' | 'active' | 'unknown';
 
 const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   name: '',
@@ -19,6 +27,8 @@ const EMPTY_STATION: Omit<Station, 'id' | 'createdAt'> = {
   lng: undefined,
   zerotierIp: '',
   chargeBoxId: '',
+  commissioningDate: '',
+  warrantyYears: null,
   chargerHeads: 2,
   expectedPmPerHead: 3,
   expectedPmHead1: 3,
@@ -153,11 +163,19 @@ function ConfigPageInner() {
     if (editId) router.replace('/config');  // clear ?edit= from URL
   };
 
-  // Auto-open edit form when ?edit=<id> is in URL (link from station detail page)
+  // Auto-open edit form when ?edit=<id> is in URL (link from station detail page).
+  // Do this ONCE per id. `stations` is replaced by every background refetch of
+  // /api/stations (every ~10-30 s) and again right after a save; re-running this
+  // on each change used to overwrite everything the user had typed with the
+  // saved copy of the station.
+  const openedEditIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!editId || stations.length === 0) return;
+    if (!editId) { openedEditIdRef.current = null; return; }  // ?edit= cleared → allow reopening later
+    if (openedEditIdRef.current === editId) return;            // already opened — keep the user's input
+    if (stations.length === 0) return;
     const target = stations.find(s => s.id === editId || s.name === editId);
     if (!target) return;
+    openedEditIdRef.current = editId;
     setForm({
       ...EMPTY_STATION,
       ...target,
@@ -197,6 +215,11 @@ function ConfigPageInner() {
       setSaveError(chargeBoxError);
       return;
     }
+    const warrantyError = validateCommissioningDate(form.commissioningDate) || validateWarrantyYears(form.warrantyYears);
+    if (warrantyError) {
+      setSaveError(warrantyError);
+      return;
+    }
     const trimmedName = form.name.trim();
     if (!trimmedName) {
       setSaveError('Station name is required');
@@ -214,6 +237,8 @@ function ConfigPageInner() {
         ...form,
         customer: trimCustomerInfo(form.customer),
         chargeBoxId: trimChargeBoxId(form.chargeBoxId),
+        commissioningDate: trimCommissioningDate(form.commissioningDate),
+        warrantyYears: normalizeWarrantyYears(form.warrantyYears),
         name: trimmedName,
         id: form.id,
         createdAt: stations.find(s => s.id === form.id)?.createdAt ?? new Date().toISOString(),
@@ -233,6 +258,8 @@ function ConfigPageInner() {
         ...form,
         customer: trimCustomerInfo(form.customer),
         chargeBoxId: trimChargeBoxId(form.chargeBoxId),
+        commissioningDate: trimCommissioningDate(form.commissioningDate),
+        warrantyYears: normalizeWarrantyYears(form.warrantyYears),
         name: trimmedName,
         id: newId,
         createdAt: new Date().toISOString(),
@@ -277,8 +304,15 @@ function ConfigPageInner() {
   };
 
   const [search, setSearch] = useState('');
+  const [warrantyFilter, setWarrantyFilter] = useState<WarrantyFilter>('all');
 
-  const filteredStations = search.trim() === ''
+  // One "today" per render so every card and the filter counts agree.
+  const today = todayInBangkok();
+  const warrantyOf = (s: Station) => warrantyStatus(s.commissioningDate, s.warrantyYears, today);
+  const warrantyCounts = { all: stations.length, expired: 0, active: 0, unknown: 0 };
+  for (const s of stations) warrantyCounts[warrantyOf(s).state]++;
+
+  const searchedStations = search.trim() === ''
     ? stations
     : stations.filter(s => {
         const q = search.trim().toLowerCase();
@@ -291,6 +325,9 @@ function ConfigPageInner() {
           (s.chargeBoxId || '').toLowerCase().includes(q)
         );
       });
+  const filteredStations = warrantyFilter === 'all'
+    ? searchedStations
+    : searchedStations.filter(s => warrantyOf(s).state === warrantyFilter);
 
   const handleDelete = async (id: string) => {
     setDeleteConfirm(null);
@@ -373,7 +410,7 @@ function ConfigPageInner() {
             <h1 className="section-title" style={{ fontSize: 18 }}>Station Config</h1>
             <p className="section-subtitle">
               {stations.length} stations configured
-              {search.trim() && filteredStations.length !== stations.length && ` · ${filteredStations.length} shown`}
+              {filteredStations.length !== stations.length && ` · ${filteredStations.length} shown`}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -394,9 +431,36 @@ function ConfigPageInner() {
           </div>
         </div>
 
-        {filteredStations.length === 0 && search.trim() && (
+        {/* Warranty filter — "หมดประกันแล้ว" lists every station whose warranty has ended */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: '1rem' }}>
+          {([
+            { id: 'all',     label: 'ทั้งหมด',        tone: 'info'  },
+            { id: 'expired', label: 'หมดประกันแล้ว', tone: 'error' },
+            { id: 'active',  label: 'อยู่ในประกัน',   tone: 'ok'    },
+            { id: 'unknown', label: 'ยังไม่ระบุ',     tone: 'info'  },
+          ] as const).map(f => {
+            const on = warrantyFilter === f.id;
+            return (
+              <button key={f.id} type="button" onClick={() => setWarrantyFilter(f.id)} aria-pressed={on}
+                style={{
+                  padding: '4px 12px', fontSize: 11, fontFamily: 'var(--font-geist-mono), monospace',
+                  borderRadius: 999, cursor: 'pointer',
+                  border: `1px solid ${on ? `var(--${f.tone})` : 'var(--border)'}`,
+                  background: on ? `var(--${f.tone}-bg)` : 'transparent',
+                  color: on ? `var(--${f.tone}-text)` : 'var(--text-secondary)',
+                  fontWeight: on ? 700 : 400,
+                }}>
+                {f.label} {warrantyCounts[f.id]}
+              </button>
+            );
+          })}
+        </div>
+
+        {filteredStations.length === 0 && stations.length > 0 && (
           <div className="card" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-            No stations match &quot;{search}&quot;
+            {search.trim()
+              ? <>No stations match &quot;{search}&quot;{warrantyFilter !== 'all' && ' in this warranty filter'}</>
+              : 'No stations in this warranty filter'}
           </div>
         )}
 
@@ -405,10 +469,11 @@ function ConfigPageInner() {
             <div key={station.id} className="card" style={{ padding: '1rem 1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName || station.name}</span>
                     <ZerotierCopy ip={station.zerotierIp} />
                     <span className="badge badge-info" style={{ fontSize: 10 }}>{station.name}</span>
+                    <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} showActive />
                     <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                       {station.chargerHeads} heads · Fan {station.fanBrand} · HMI {station.hmiBrand || 'Phoenix'} · Controller {(station.controllerType || 'phoenix') === 'vector' ? 'Vector' : 'Phoenix'}
                     </span>
@@ -425,6 +490,23 @@ function ConfigPageInner() {
                       <span style={{ fontFamily: 'var(--font-geist-mono), monospace' }}>{station.chargeBoxId}</span>
                     </div>
                   )}
+                  {(station.commissioningDate || station.warrantyYears != null) && (() => {
+                    const w = warrantyOf(station);
+                    return (
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, overflowWrap: 'anywhere' }}>
+                        <span style={{ fontWeight: 600 }}>Commissioning: </span>{station.commissioningDate ? formatWarrantyDate(station.commissioningDate) : '—'}
+                        {' · '}<span style={{ fontWeight: 600 }}>ประกัน </span>{station.warrantyYears != null ? formatWarrantyYears(station.warrantyYears) : '—'}
+                        {w.state !== 'unknown' && w.expiresOn && w.daysLeft !== null && (
+                          <>
+                            {' · '}<span style={{ fontWeight: 600 }}>{w.state === 'expired' ? 'หมดประกัน ' : 'ประกันถึง '}</span>{formatWarrantyDate(w.expiresOn)}
+                            {' '}<span style={{ color: w.state === 'expired' ? 'var(--error-text)' : 'var(--text-muted)' }}>
+                              ({w.state === 'expired' ? `เกินมา ${-w.daysLeft} วัน` : w.daysLeft === 0 ? 'วันสุดท้าย' : `เหลืออีก ${w.daysLeft} วัน`})
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {/* Quick topic summary */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 4 }}>
                     {[
@@ -550,6 +632,52 @@ function ConfigPageInner() {
               <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
                 รหัส ChargeBox ID ของตู้ตามที่ตั้งไว้ใน OCPP (ไม่บังคับ · ไม่เกิน {CHARGE_BOX_ID_MAX_LENGTH} ตัวอักษร · ภาษาอังกฤษ/ตัวเลข/สัญลักษณ์ ไม่มีช่องว่าง)
               </div>
+            </div>
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label className="input-label" htmlFor="commissioning-date">Commissioning Date</label>
+                  <input id="commissioning-date" className="input" type="date"
+                    min="2000-01-01" max="2100-12-31"
+                    value={form.commissioningDate ?? ''}
+                    onChange={e => setForm(f => ({ ...f, commissioningDate: e.target.value }))}
+                    style={{ fontFamily: 'var(--font-geist-mono), monospace' }} />
+                </div>
+                <div>
+                  <label className="input-label" htmlFor="warranty-years">Warranty (years)</label>
+                  <input id="warranty-years" className="input" type="number"
+                    min={WARRANTY_YEARS_STEP} max={WARRANTY_YEARS_MAX} step={WARRANTY_YEARS_STEP} inputMode="decimal"
+                    placeholder="e.g. 3"
+                    value={form.warrantyYears ?? ''}
+                    onChange={e => setForm(f => ({ ...f, warrantyYears: e.target.value === '' ? null : Number(e.target.value) }))}
+                    style={{ fontFamily: 'var(--font-geist-mono), monospace' }} />
+                </div>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 3 }}>
+                วันที่เริ่มใช้งานสถานี และระยะเวลารับประกันเป็นปี นับจากวัน commissioning (ไม่บังคับ · ครึ่งปีใส่ 0.5 · ต้องกรอกทั้งสองช่องจึงจะคำนวณวันหมดประกัน)
+              </div>
+              {(() => {
+                const warrantyFormError = validateCommissioningDate(form.commissioningDate) || validateWarrantyYears(form.warrantyYears);
+                const w = warrantyStatus(form.commissioningDate, form.warrantyYears, today);
+                const tone = warrantyFormError ? 'error' : w.state === 'expired' ? 'error' : w.state === 'active' ? 'ok' : null;
+                return (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '8px 10px', borderRadius: 6, fontSize: 12,
+                    background: tone ? `var(--${tone}-bg)` : 'var(--bg-elevated)',
+                    border: `1px solid ${tone ? `var(--${tone})` : 'var(--border)'}`,
+                    color: tone ? `var(--${tone}-text)` : 'var(--text-muted)',
+                  }}>
+                    {tone && <span className={`led led-${tone}`} style={{ width: 7, height: 7 }} />}
+                    <span>
+                      {warrantyFormError
+                        ? warrantyFormError
+                        : w.state === 'unknown'
+                          ? 'ยังไม่ระบุ — กรอกวันที่และจำนวนปีเพื่อคำนวณวันหมดประกัน'
+                          : <><b>{w.state === 'expired' ? 'หมดประกันแล้ว' : 'อยู่ในประกัน'}</b> {describeWarranty(w)}</>}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <label className="input-label">Number of Charger Heads</label>

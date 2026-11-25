@@ -5,6 +5,7 @@ import { invalidateFleetCache } from '@/lib/fleetCache';
 import { invalidateStationsCache } from '@/lib/stationsCache';
 import { validateCustomerInfo } from '@/lib/customerInfo';
 import { validateChargeBoxId } from '@/lib/chargeBoxId';
+import { validateCommissioningDate, validateWarrantyYears } from '@/lib/warranty';
 import { requireEditor, getRequestSession } from '@/lib/authorization';
 import { audit } from '@/lib/audit';
 import { invalidateResponse } from '@/lib/apiCache';
@@ -65,6 +66,13 @@ export async function POST(req: NextRequest) {
     const chargeBoxError = validateChargeBoxId(station.chargeBoxId);
     if (chargeBoxError) {
       return NextResponse.json({ error: chargeBoxError }, { status: 400 });
+    }
+
+    // Commissioning date / warranty: both optional. Omitted = leave the saved value alone;
+    // '' (date) / null (years) = clear it.
+    const warrantyError = validateCommissioningDate(station.commissioningDate) || validateWarrantyYears(station.warrantyYears);
+    if (warrantyError) {
+      return NextResponse.json({ error: warrantyError }, { status: 400 });
     }
 
     // ── Validate name ──

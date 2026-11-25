@@ -318,6 +318,8 @@ async function buildFleet(): Promise<any[]> {
           name: st.name,
           displayName: st.displayName || st.name,
           zerotierIp: st.zerotierIp || '',
+          commissioningDate: st.commissioningDate || '',
+          warrantyYears: st.warrantyYears ?? null,
           chargerHeads: st.chargerHeads || 2,
           expectedPmPerHead: st.expectedPmPerHead || 3,
           expectedPmHead1: st.expectedPmHead1 ?? st.expectedPmPerHead ?? 3,

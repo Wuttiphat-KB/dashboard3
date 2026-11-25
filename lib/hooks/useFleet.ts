@@ -9,6 +9,8 @@ export interface FleetStation {
     name: string;
     displayName: string;
     zerotierIp?: string;
+    commissioningDate?: string;       // YYYY-MM-DD, '' = not set — with warrantyYears feeds the "หมดประกันแล้ว" badge
+    warrantyYears?: number | null;    // null = not set
     chargerHeads: number;
     expectedPmPerHead: number;
     expectedPmHead1: number;

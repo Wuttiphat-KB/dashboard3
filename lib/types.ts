@@ -56,6 +56,8 @@ export interface Station {
   lng?:             number;      // map longitude (decimal degrees)
   zerotierIp?:      string;      // ZeroTier IP for remote access (e.g. 10.147.20.13) — copyable on the station page
   chargeBoxId?:     string;      // OCPP ChargeBox ID (charge point identity, ≤48 ASCII chars) — optional, '' = not set
+  commissioningDate?: string;    // go-live date, YYYY-MM-DD — optional, '' = not set (see lib/warranty.ts)
+  warrantyYears?:   number | null; // warranty length in years from commissioningDate (0.5 steps, ≤ 20) — null = not set
   chargerHeads:     number;
   expectedPmPerHead: number;     // DEPRECATED — kept for backwards compatibility (use head1/head2 below)
   expectedPmHead1:  number;      // expected PM count for charger head 1
