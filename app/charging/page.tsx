@@ -130,12 +130,6 @@ function StationCard({ s }: { s: ChargingStation }) {
         </span>
       </div>
 
-      {isWarrantyExpired(s.station.commissioningDate, s.station.warrantyYears) && (
-        <div>
-          <WarrantyBadge commissioningDate={s.station.commissioningDate} warrantyYears={s.station.warrantyYears} />
-        </div>
-      )}
-
       {s.heads.map(h => <HeadBlock key={h.head} h={h} single={s.heads.length === 1} />)}
 
       {!s.live && (
@@ -144,9 +138,14 @@ function StationCard({ s }: { s: ChargingStation }) {
         </div>
       )}
 
-      <Link href={`/station/${s.station.id}`} style={{ fontSize: 12, color: 'var(--info-text)', textDecoration: 'none', textAlign: 'right', marginTop: 'auto' }}>
-        View station →
-      </Link>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', minHeight: 24, marginTop: 'auto' }}>
+        {isWarrantyExpired(s.station.commissioningDate, s.station.warrantyYears) && (
+          <WarrantyBadge commissioningDate={s.station.commissioningDate} warrantyYears={s.station.warrantyYears} />
+        )}
+        <Link href={`/station/${s.station.id}`} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--info-text)', textDecoration: 'none' }}>
+          View station →
+        </Link>
+      </div>
     </div>
   );
 }

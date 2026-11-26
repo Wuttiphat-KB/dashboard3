@@ -6,7 +6,7 @@ import { useFleet } from '@/lib/hooks/useFleet';
 import { StationDashboardData, Station, METER_MAX_KWH } from '@/lib/types';
 import { ZerotierCopy } from '@/components/ui/CopyButton';
 import WarrantyBadge from '@/components/ui/WarrantyBadge';
-import { isWarrantyExpired } from '@/lib/warranty';
+import { warrantyStatus } from '@/lib/warranty';
 
 const OVERVIEW_TYPES = [
   { id: 'heartbeat',   label: 'Heartbeat'    },
@@ -48,6 +48,7 @@ function Shell({ station, data, children, customBadge, borderColor }: {
   borderColor?: string;
 }) {
   const st = deriveStatus(data);
+  const warranty = warrantyStatus(station.commissioningDate, station.warrantyYears);
   const defaultBorder = st === 'offline' ? 'var(--error)' : st === 'degraded' ? 'var(--warn)' : 'var(--border)';
   return (
     <div className="card" style={{
@@ -60,19 +61,19 @@ function Shell({ station, data, children, customBadge, borderColor }: {
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{station.displayName}</div>
             <ZerotierCopy ip={station.zerotierIp} />
           </div>
-          {isWarrantyExpired(station.commissioningDate, station.warrantyYears) && (
-            <div style={{ marginTop: 6 }}>
-              <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} />
-            </div>
-          )}
         </div>
         {customBadge ?? <StatusBadge status={st} />}
       </div>
       <div style={{ height: 1, background: 'var(--border-subtle)' }} />
       {children}
-      <Link href={`/station/${station.id}`} style={{ fontSize: 12, color: 'var(--info-text)', textDecoration: 'none', textAlign: 'right', marginTop: 2 }}>
-        View station →
-      </Link>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', minHeight: 24, marginTop: 'auto', paddingTop: 2 }}>
+        {warranty.state === 'expired' && (
+          <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} />
+        )}
+        <Link href={`/station/${station.id}`} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--info-text)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+          View station →
+        </Link>
+      </div>
     </div>
   );
 }
