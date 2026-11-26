@@ -55,12 +55,6 @@ function StationCard({ item }: { item: FleetStation }) {
           <StatusDot status={status} />
         </div>
 
-        {warrantyExpired && (
-          <div style={{ marginBottom: 10 }}>
-            <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} />
-          </div>
-        )}
-
         {/* Metrics */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 10 }}>
           {[
@@ -119,8 +113,14 @@ function StationCard({ item }: { item: FleetStation }) {
           ))}
         </div>
 
-        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--info-text)', textAlign: 'right' }}>
-          View details →
+        {/* Footer: warranty badge on the left, link on the right (same line) */}
+        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', minHeight: 24 }}>
+          {warrantyExpired && (
+            <WarrantyBadge commissioningDate={station.commissioningDate} warrantyYears={station.warrantyYears} />
+          )}
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--info-text)', whiteSpace: 'nowrap' }}>
+            View details →
+          </span>
         </div>
       </div>
     </Link>

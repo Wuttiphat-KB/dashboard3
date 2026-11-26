@@ -281,9 +281,11 @@ export default function StationMapPage() {
              ${STATUS_LABEL[s.status]}
            </div>
            <div style="font-size:10px;color:#888;margin-bottom:6px">📍 ${fmtCoords(s.coords!)}</div>
-           ${s.warrantyNote ? `<div style="font-size:11px;font-weight:700;color:#cf222e;margin-bottom:6px">● ${escapeHtml(s.warrantyNote)}</div>` : ''}
            ${s.zerotierIp ? `<div style="font-size:11px;margin-bottom:6px">ZeroTier <span style="font-family:monospace">${escapeHtml(s.zerotierIp)}</span> <button type="button" data-zt-copy="${escapeHtml(s.zerotierIp)}" title="Copy ZeroTier IP" style="cursor:pointer;border:1px solid #ccc;border-radius:4px;background:transparent;padding:0 4px;font-size:11px">📋</button></div>` : ''}
-           <a href="/station/${encodeURIComponent(s.id)}" style="color:#0969da;font-size:11px">View station →</a>
+           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+             ${s.warrantyNote ? `<span title="${escapeHtml(s.warrantyNote)}" style="font-size:11px;font-weight:700;color:#cf222e">● หมดประกันแล้ว</span>` : ''}
+             <a href="/station/${encodeURIComponent(s.id)}" style="margin-left:auto;color:#0969da;font-size:11px">View station →</a>
+           </div>
          </div>`
       );
       marker.on('click', () => setSelectedId(s.id));
@@ -415,11 +417,6 @@ export default function StationMapPage() {
                           </span>
                           <ZerotierCopy ip={s.zerotierIp} />
                         </span>
-                        {s.warrantyNote && (
-                          <span style={{ display: 'block', margin: '2px 0' }}>
-                            <WarrantyBadge commissioningDate={s.commissioningDate} warrantyYears={s.warrantyYears} />
-                          </span>
-                        )}
                         <span style={{ display: 'block', fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {s.location || '— no location —'}
                         </span>
@@ -428,16 +425,21 @@ export default function StationMapPage() {
                         </span>
                       </span>
                     </div>
-                    <Link
-                      href={`/station/${encodeURIComponent(s.id)}`}
-                      title="View station"
-                      style={{
-                        flexShrink: 0, fontSize: 11, color: 'var(--info-text)',
-                        textDecoration: 'none', whiteSpace: 'nowrap', padding: '2px 4px',
-                      }}
-                    >
-                      View →
-                    </Link>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      {s.warrantyNote && (
+                        <WarrantyBadge commissioningDate={s.commissioningDate} warrantyYears={s.warrantyYears} />
+                      )}
+                      <Link
+                        href={`/station/${encodeURIComponent(s.id)}`}
+                        title="View station"
+                        style={{
+                          flexShrink: 0, fontSize: 11, color: 'var(--info-text)',
+                          textDecoration: 'none', whiteSpace: 'nowrap', padding: '2px 4px',
+                        }}
+                      >
+                        View →
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </>

@@ -24,6 +24,9 @@ import { backfillMeterChangedAt } from './modules/meter';
 import { startChargeAggregator, backfillStation } from './modules/chargeAggregator';
 import { startPeakHoursAggregator, backfillPeakStation } from './modules/peakHoursAggregator';
 import { initVectorHandler, registerVectorStation, unregisterVectorStation } from './modules/vector';
+import { initFaultStatusHandlers } from './modules/faultStatus';
+import { initExceptionAlarmHandler, sweepExceptionAlarms } from './modules/exceptionAlarm';
+import { chargerFaultTopics, ocppStationFromHeartbeat } from '../lib/chargerFaults';
 import { onMessage } from './mqtt';
 import { MOCK_STATIONS } from '../lib/mockData';
 import { scanStationCollections, pruneStaleStations } from '../lib/stationScan';
@@ -289,6 +292,20 @@ function registerStationConfig(station: StationConfig): void {
     topics.plc         = mqttTopics.plc         || '';
     topics.fanRPM      = mqttTopics.fanRPM      || '';
   }
+
+  // Charger fault status + exception alarm: OCPP/<OCPPSTATION>/FaultStatus, .../FaultStatus/<connector>,
+  // .../ExceptionAlarm. <OCPPSTATION> is the middle segment of the station's OCPP/<seg>/heartbeat topic
+  // (it is not always the station name), so there is nothing extra to configure per station.
+  const ocppStation = ocppStationFromHeartbeat(mqttTopics.heartbeat);
+  const faultTopics = ocppStation ? chargerFaultTopics(ocppStation) : null;
+  if (faultTopics) {
+    Object.assign(topics, faultTopics);
+    if (!isVector && topics.faultStatus && topics.faultStatus === faultTopics.faultEvent) {
+      // The Phoenix script heartbeat key is pointed at the same topic as the new fault events: the script
+      // heartbeat handler would read every fault event as a heartbeat. Left as is; fix the station config.
+      console.warn(`[fault] ${station.id}: mqttTopics.faultStatus equals ${faultTopics.faultEvent} (clashes with the fault event topic)`);
+    }
+  }
   registerStation(station.id, topics);
 
   registerHeartbeatStation(station.id, {
@@ -338,6 +355,8 @@ async function main() {
   initFanRpmHandler();
   initScriptHbHandlers();
   initVectorHandler();
+  initFaultStatusHandlers();
+  initExceptionAlarmHandler();
 
   // Router also feeds temperature module
   onMessage('router', (stationId, _topic, payload) => {
@@ -423,6 +442,7 @@ async function main() {
   setInterval(() => {
     checkTimeouts();
     checkScriptTimeouts();
+    sweepExceptionAlarms();
   }, 30_000);
 
   // 7b. Auto-alert engine (every 60s) — temp / meter stalled / PM count / script offline

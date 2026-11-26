@@ -8,6 +8,7 @@
 
 import 'dotenv/config';
 import { MongoClient } from 'mongodb';
+import { chargerFaultIndexes } from '../lib/chargerFaults';
 
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
@@ -56,6 +57,20 @@ async function main() {
       created++;
     } catch (err: any) {
       console.error(`  ✗ ${spec.db}.${spec.collection}:`, err?.message || err);
+      skipped++;
+    }
+  }
+
+  // 1b. Charger fault status / exception alarm collections (Station DB) — includes the TTL indexes
+  console.log('\n═ Station DB — charger faults / exception alarms ═');
+  for (const spec of chargerFaultIndexes()) {
+    const t = Date.now();
+    try {
+      const name = await client.db('Station').collection(spec.collection).createIndex(spec.keys, spec.options);
+      console.log(`  ✓ Station.${spec.collection} { ${Object.entries(spec.keys).map(([k, v]) => `${k}:${v}`).join(', ')} }  (${name}, ${Date.now() - t}ms)`);
+      created++;
+    } catch (err: any) {
+      console.error(`  ✗ Station.${spec.collection} (${spec.options.name}):`, err?.message || err);
       skipped++;
     }
   }
